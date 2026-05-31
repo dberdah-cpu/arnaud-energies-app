@@ -1229,46 +1229,50 @@ function runSim() {
 }
 
 function updateKPIs() {
+  // Helper pour mettre à jour label et valeur d'un KPI card
+  function setKpi(valId, val, cls, lbl) {
+    const el = document.getElementById(valId);
+    if (!el) return;
+    el.textContent = val;
+    if (cls) el.className = 'kpi-val ' + cls;
+    // Le label est le .kpi-lbl dans le même .kpi-card
+    const card = el.closest('.kpi-card') || el.parentElement;
+    const lblEl = card ? card.querySelector('.kpi-lbl') : null;
+    if (lblEl && lbl) lblEl.textContent = lbl;
+  }
+
   if (simMode === 'lisse' && simData[0] && simData[0].lisse) {
     const d = simData[0];
-    document.getElementById('kpiDeficit').textContent = '—';
-    document.getElementById('kpiDeficit').className = 'kpi-val';
-    document.getElementById('kpiRetour').textContent = '—';
-    document.getElementById('kpiGains30').textContent = fmtSign(d.gainsNets30) + ' €';
-    document.getElementById('kpiGains30').className = 'kpi-val pos';
-    // Gain moyen mensuel avec et sans financement
-    const avecFin = Math.round((d.gainsNets30 / 30 / 12) - (d.annualFin / 12));
-    const sansFin = Math.round(d.gainsNets30 / 30 / 12);
-    document.getElementById('kpiAn1').textContent = sansFin + ' €/mois';
+    // Gain moyen mensuel pendant financement = (gains30/30/12) - mensualite mensuelle
+    const mensualiteHT = d.annualFin / 12;
+    const gainMoisAvecFin = Math.round(d.gainsNets30 / 30 / 12 - mensualiteHT);
+    const gainMoisSansFin = Math.round(d.gainsNets30 / 30 / 12);
 
-    // Mettre à jour le label du KPI
-    document.querySelector('#kpiAn1').parentElement.querySelector('.kpi-lbl').textContent = 'Gain moyen mensuel (30 ans)';
-    document.querySelector('#kpiGains30').parentElement.querySelector('.kpi-lbl').textContent = 'Gains nets 30 ans';
-    document.querySelector('#kpiDeficit').parentElement.querySelector('.kpi-lbl').textContent = 'Gain annuel moyen';
-    document.getElementById('kpiDeficit').textContent = fmtSign(d.gainMoyenAnnuel) + ' €';
-    document.getElementById('kpiDeficit').className = 'kpi-val ' + (d.gainMoyenAnnuel >= 0 ? 'pos' : 'neg');
-    document.querySelector('#kpiRetour').parentElement.querySelector('.kpi-lbl').textContent = 'Pendant financement';
-    document.getElementById('kpiRetour').textContent = fmtSign(avecFin) + ' €/mois';
+    setKpi('kpiGains30',  fmtSign(d.gainsNets30) + ' €',        'pos', 'Gains nets 30 ans');
+    setKpi('kpiDeficit',  fmtSign(d.gainMoyenAnnuel) + ' €/an', 'pos', 'Gain annuel moyen (30 ans / 30)');
+    setKpi('kpiAn1',      fmtSign(gainMoisSansFin) + ' €/mois', 'pos', 'Gain mensuel moyen (30 ans / 30 / 12)');
+    setKpi('kpiRetour',
+      d.finYears > 0 ? fmtSign(gainMoisAvecFin) + ' €/mois' : '—',
+      gainMoisAvecFin >= 0 ? 'pos' : 'neg',
+      'Pendant financement (' + d.finYears + ' ans)');
     return;
   }
-  // Reset labels for réel mode
-  document.querySelector('#kpiDeficit').parentElement.querySelector('.kpi-lbl').textContent = 'Déficit cumulé max';
-  document.querySelector('#kpiRetour').parentElement.querySelector('.kpi-lbl').textContent = 'Retour positif cumulé';
-  document.querySelector('#kpiGains30').parentElement.querySelector('.kpi-lbl').textContent = 'Gains nets 30 ans';
-  document.querySelector('#kpiAn1').parentElement.querySelector('.kpi-lbl').textContent = 'Résultat an 1 (mois)';
 
-  const minCum = Math.min(...simData.map(d => d.cum));
-  const retour = simData.find(d => d.cum >= 0);
+  // Mode réel — reset labels
+  setKpi('kpiDeficit', '', '',   'Déficit cumulé max');
+  setKpi('kpiRetour',  '', '',   'Retour positif cumulé');
+  setKpi('kpiGains30', '', '',   'Gains nets 30 ans');
+  setKpi('kpiAn1',     '', '',   'Résultat an 1 (mois)');
+
+  const minCum  = Math.min(...simData.map(d => d.cum));
+  const retour  = simData.find(d => d.cum >= 0);
   const gains30 = simData[29].cum;
-  const an1 = simData[0].net;
+  const an1     = simData[0].net;
 
-  const kpiDef = document.getElementById('kpiDeficit');
-  kpiDef.textContent = minCum < 0 ? fmtSign(minCum) + ' €' : '0 €';
-  kpiDef.className = 'kpi-val ' + (minCum < 0 ? 'neg' : 'pos');
-
-  document.getElementById('kpiRetour').textContent = retour ? 'An ' + retour.y : '> 30 ans';
-  document.getElementById('kpiGains30').textContent = fmtSign(gains30) + ' €';
-  document.getElementById('kpiAn1').textContent = (an1 / 12 >= 0 ? '+' : '') + Math.round(an1 / 12) + ' €/mois';
+  setKpi('kpiDeficit', minCum < 0 ? fmtSign(minCum) + ' €' : '0 €', minCum < 0 ? 'neg' : 'pos', 'Déficit cumulé max');
+  setKpi('kpiRetour',  retour ? 'An ' + retour.y : '> 30 ans', '', 'Retour positif cumulé');
+  setKpi('kpiGains30', fmtSign(gains30) + ' €', 'pos', 'Gains nets 30 ans');
+  setKpi('kpiAn1',     (an1/12 >= 0 ? '+' : '') + Math.round(an1/12) + ' €/mois', an1 >= 0 ? 'pos' : 'neg', 'Résultat an 1 (mois)');
 }
 
 function renderTable() {
@@ -1279,7 +1283,7 @@ function renderTable() {
   if (simMode === 'lisse') {
     // Pas de tableau en mode lissé
     thead.innerHTML = '';
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--gray);padding:1.5rem;font-style:italic">Mode lissé — le tableau annuel n'est pas affiché. Basculez en mode Réel pour voir le détail année par année.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--gray);padding:1.5rem;font-style:italic">Mode lissé — basculez en mode Réel pour le détail année par année.</td></tr>';
     return;
   }
 
@@ -1394,7 +1398,11 @@ function updateRecap() {
   document.getElementById('retainedMode').textContent = simMode === 'lisse' ? 'Lissé 30 ans' : 'Réel an/an';
   document.getElementById('recapPower').textContent = (document.getElementById('power').value || '—') + ' kWc';
   document.getElementById('recapProd').textContent = fmt(parseInt(document.getElementById('prodReal').value) || 0) + ' kWh';
-  document.getElementById('recapGains').textContent = simData.length ? fmtSign(simData[29].cum) + ' €' : '—';
+  // En mode lissé simData[0].gainsNets30, en mode réel simData[29].cum
+  const gains30 = simData.length
+    ? (simData[0].lisse ? simData[0].gainsNets30 : simData[29].cum)
+    : 0;
+  document.getElementById('recapGains').textContent = simData.length ? fmtSign(gains30) + ' €' : '—';
   const m = finMode === 'mensual' ? document.getElementById('monthly').value : 'Comptant';
   document.getElementById('recapMonthly').textContent = m ? (m + (finMode === 'mensual' ? ' € HT' : '')) : '—';
 }
@@ -1418,41 +1426,41 @@ function generatePDF() {
       // Texte désignation
       const isPanneaux = parseInt(d.panels);
       const designLines = [
-        { text: 'Lieu de livraison : ', style: 'bold', cont: 'Identique à l\'adresse de facturation' },
-        { text: 'Délai de livraison : ', style: 'normal', cont: '90 jours sauf accord contraire des parties.' },
-        { text: '', style: 'space' },
-        { text: 'Attestation d\'assurance décennale obligatoire et de responsabilité civile professionnelle : ', style: 'normal', cont: 'Un contrat d\'assurance n°037.0012525.S179337' },
-        { text: '', style: 'space' },
-        { text: 'Puissance : ' + d.power + ' kWc', style: 'bold' },
-        { text: 'Nombre de panneaux : ' + d.panels, style: 'bold' },
-        { text: '', style: 'space' },
-        { text: 'Marque : Francilienne ENERGY - Réf : MONO 500 W', style: 'normal' },
-        { text: 'Panneaux photovoltaïques monocristallin Full Black 500 Wc 132 DEMI-CELLULES PERC', style: 'normal' },
-        { text: 'Dimension cadre (mm) : L 2094 x l 1134 x E 35', style: 'normal' },
-        { text: 'Garantie 30 ans', style: 'bold' },
-        { text: '', style: 'space' },
-        { text: 'Marque : Huawei - Réf : SUN2000', style: 'normal' },
-        { text: 'Onduleurs triphasé : Smart Energy controller AC et DC', style: 'normal' },
-        { text: 'Garantie 10 ans', style: 'bold' },
-        { text: '', style: 'space' },
-        { text: 'Système de pilotage', style: 'bold' },
-        { text: '', style: 'space' },
-        { text: 'Huawei Smart Power Sensor : Unité de mesure et de supervision énergétique permettant d\'optimiser l\'autoconsommation grâce au suivi en temps réel des flux électriques (consommation, production, injection réseau) directement au tableau de votre installation en mode rail DIN', style: 'normal' },
-        { text: '', style: 'space' },
-        { text: 'Application dédiée FusionSolar permettant d\'optimiser les performances, suivre les données en temps réel et piloter efficacement votre installation.', style: 'normal' },
-        { text: '', style: 'space' },
-        { text: 'Démarches incluses au projet :', style: 'normal' },
-        { text: '- Obtention de la déclaration préalable de travaux auprès des services d\'urbanisme.', style: 'normal' },
-        { text: '- Obtention d\'un contrat de revente du surplus et visite technique.', style: 'normal' },
-        { text: '- Demande au tiers financeur.', style: 'normal' },
-        { text: '', style: 'space' },
-        { text: 'Raccordement :', style: 'normal' },
-        { text: '- Raccordement au tableau électrique dans le cadre de l\'autoconsommation.', style: 'normal' },
-        { text: '- Raccordement au réseau pour la revente de surplus à hauteur de 1 500 euros.', style: 'normal' },
+        { text: "Lieu de livraison : ", style: "bold", cont: "Identique a l'adresse de facturation" },
+        { text: "Delai de livraison : ", style: "normal", cont: "90 jours sauf accord contraire des parties." },
+        { text: "", style: "space" },
+        { text: "Attestation assurance decimale RC Pro : ", style: "normal", cont: "Contrat n 037.0012525.S179337" },
+        { text: "", style: "space" },
+        { text: "Puissance : " + d.power + " kWc", style: "bold" },
+        { text: "Nombre de panneaux : " + d.panels, style: "bold" },
+        { text: "", style: "space" },
+        { text: "Marque : Francilienne ENERGY - Ref : MONO 500 W", style: "normal" },
+        { text: "Panneaux photovoltaiques monocristallin Full Black 500 Wc 132 DEMI-CELLULES PERC", style: "normal" },
+        { text: "Dimension cadre (mm) : L 2094 x l 1134 x E 35", style: "normal" },
+        { text: "Garantie 30 ans", style: "bold" },
+        { text: "", style: "space" },
+        { text: "Marque : Huawei - Ref : SUN2000", style: "normal" },
+        { text: "Onduleurs triphase : Smart Energy controller AC et DC", style: "normal" },
+        { text: "Garantie 10 ans", style: "bold" },
+        { text: "", style: "space" },
+        { text: "Systeme de pilotage", style: "bold" },
+        { text: "", style: "space" },
+        { text: "Huawei Smart Power Sensor : optimisation de l'autoconsommation grace au suivi en temps reel des flux electriques, directement au tableau en mode rail DIN", style: "normal" },
+        { text: "", style: "space" },
+        { text: "Application dediee FusionSolar permettant d'optimiser les performances et suivre les donnees en temps reel.", style: "normal" },
+        { text: "", style: "space" },
+        { text: "Demarches incluses au projet :", style: "normal" },
+        { text: "- Obtention de la declaration prealable de travaux.", style: "normal" },
+        { text: "- Obtention d'un contrat de revente du surplus et visite technique.", style: "normal" },
+        { text: "- Demande au tiers financeur.", style: "normal" },
+        { text: "", style: "space" },
+        { text: "Raccordement :", style: "normal" },
+        { text: "- Raccordement au tableau electrique dans le cadre de l'autoconsommation.", style: "normal" },
+        { text: "- Raccordement au reseau pour la revente de surplus a hauteur de 1 500 euros.", style: "normal" },
       ];
       if (obs) {
         designLines.push({ text: '', style: 'space' });
-        designLines.push({ text: 'Observations :', style: 'bold' });
+        designLines.push({ text: "Observations :", style: 'bold' });
         designLines.push({ text: obs, style: 'normal' });
       }
 
@@ -1466,20 +1474,16 @@ function generatePDF() {
         ? (parseFloat(d.monthly) * 1.20).toFixed(2)
         : (parseFloat(d.cashPrice) * 1.20).toFixed(2);
       const durationLabel = finMode === 'mensual'
-        ? 'Tarif mensuel sur ' + d.duration + ' mensualités'
-        : 'Prix comptant — fourniture, installation et mise en service.';
+        ? "Tarif mensuel sur " + d.duration + " mensualites"
+        : "Prix comptant - fourniture, installation et mise en service.";
 
       const condGenText = [
-        'Le présent devis devient caduc dans le cas de la non réalisation d\'un des éléments suivants : obtention de l\'accord du tiers financeur (le client s\'engage à transmettre les éléments demandés). Obtention de l\'autorisation préalable de travaux. Faisabilité technique n\'entraînant pas de coûts excessifs à la réalisation de l\'installation. Obtention de l\'autorisation auprès du gestionnaire de réseau.',
-        '',
-        'Pour l\'annulation des dossiers, merci de vous référer aux conditions générales de ventes présentes sur notre site internet www.arnaudenergies.fr.',
-        '',
-        'En cas d\'annulation malgré l\'obtention de l\'accord administratif, technique et financier, il faut se référer aux conditions générales de vente disponibles sur le site de Arnaud Energies.',
-        '',
-        'En cas de litige afférent à la commande ou ses suites, les parties doivent d\'abord tenter de résoudre amiablement leur différend entre elles.',
-        '',
-        'A défaut d\'accord amiable dans un délai de 6 semaines, le client pourra gratuitement soumettre son litige au service de médiation "Médiation de la consommation patrimoine", dont Arnaud Energies relève, soit en ligne sur http://mcpmediation.org soit par voie postale - Médiation de la consommation et Patrimoine, 12 square Desnouettes, 75015 Paris.',
-      ].join('\n');
+        "Conditions generales : Ce devis devient caduc si accord tiers financeur, autorisation travaux, faisabilite technique ou autorisation Enedis non obtenus.",
+        "",
+        "Annulation : se referer aux CGV sur www.arnaudenergies.fr.",
+        "",
+        "Litiges : resolution amiable dans un delai de 6 semaines, puis mediation via http://mcpmediation.org ou 12 square Desnouettes, 75015 Paris.",
+      ].join("\n");
 
       const docDef = {
         pageSize: 'A4',
@@ -1628,7 +1632,7 @@ function generatePDF() {
             table: {
               widths: ['*'],
               body: [[{
-                text: 'Cachet, Date, Signature et mention "Bon pour Accord"',
+                text: "Cachet, Date, Signature et mention Bon pour Accord",
                 fontSize: 8.5, margin: [4, 4, 4, 40]
               }]]
             },
@@ -1648,15 +1652,29 @@ function generatePDF() {
 }
 
 // ─── GÉNÉRATION PPTX ─────────────────────────────────────────────────────────
-function generatePPTX() {
-  showToast('📊 La génération PPTX nécessite Node.js — utilisez l\'outil de bureau');
-  // Pour une app web pure, on utilise l'API Claude pour générer le PPTX
-  // Dans ce contexte, on affiche un message d'info
+// ─── GÉNÉRATION PPTX ─────────────────────────────────────────────────────────
+async function generatePPTX() {
+  const btn = document.getElementById('btnPPTX');
+  const spin = document.getElementById('spinPPTX');
+  btn.disabled = true; spin.classList.add('show');
+  showToast('Generation de la presentation en cours...', 8000);
+  try {
+    const d = getData();
+    const gains30 = simData.length ? (simData[0].lisse ? simData[0].gainsNets30 : simData[29].cum) : 0;
+    const modeLabel = simMode === 'lisse' ? 'Lisse 30 ans' : 'Reel an/an';
+    const gainMoyAn = Math.round(gains30 / 30);
+    const gainMoyMois = Math.round(gains30 / 30 / 12);
+    const defMax = simMode === 'reel' ? Math.min(...simData.map(x => x.cum)) : null;
+    const retour = simMode === 'reel' ? (simData.find(x => x.cum >= 0) || {y: '?'}).y : null;
+    const an1Net = simMode === 'reel' && simData[0] ? Math.round(simData[0].net / 12) : null;
+    showToast('Proposition PDF disponible. PPTX : connectez l app a votre serveur Node.');
+  } catch(err) { showToast('Erreur : ' + err.message); }
+  btn.disabled = false; spin.classList.remove('show');
 }
 
 // ─── GÉNÉRATION DOCX ─────────────────────────────────────────────────────────
-function generateDOCX() {
-  showToast('📄 La génération DOCX nécessite Node.js — utilisez l\'outil de bureau');
+async function generateDOCX() {
+  showToast('Pour PPTX et DOCX : utilisez les scripts Node.js generes precedemment (gen_edwood.js / pres_edwood_35.js)');
 }
 
 function generateAll() {
