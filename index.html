@@ -888,6 +888,15 @@ async function parsePDF(file) {
   }
 }
 
+function generatePropRef() {
+  // Génère un numéro de proposition automatique : PR + YYMM + séquence aléatoire
+  const now = new Date();
+  const yy = String(now.getFullYear()).slice(2);
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const seq = String(Math.floor(Math.random() * 9000) + 1000);
+  return 'PR' + yy + mm + '-' + seq;
+}
+
 function extractAutoCalSol(text) {
   const set = (id, val) => {
     if (val !== null && val !== undefined && String(val).trim() !== '') {
@@ -896,17 +905,50 @@ function extractAutoCalSol(text) {
     }
   };
 
-  // Nom client — cherche le nom en majuscules après patterns courants
-  const nameMatch = text.match(/(?:Client|Rapport généré sur AutoCalsol|EDWOOD|pour\s+)[\s\S]{0,20}?\n([A-Z][A-Z\s&]{3,40})\n/);
-  if (nameMatch) set('clientName', nameMatch[1].trim());
+  // ── Nom client ──
+  // AutoCalSol met le nom en titre de rapport — souvent en début de page ou après "pour"
+  // On cherche un bloc en majuscules isolé (nom société)
+  const namePatterns = [
+    /^\s*([A-Z][A-Z\s&'\-\.]{3,50})\s*$/m,                          // ligne entière en majuscules
+    /Rapport[^\n]*\n[^\n]*\n\s*([A-Z][A-Z\s&'\-\.]{3,50})\n/,    // après "Rapport"
+    /pour\s+([A-Z][A-Z\s&'\-\.]{3,50})/i,                             // "pour NOM"
+    /Client\s*[:\-]?\s*([A-Z][A-Z\s&'\-\.]{3,50})/i,               // "Client : NOM"
+  ];
+  for (const pat of namePatterns) {
+    const m = text.match(pat);
+    if (m) {
+      const name = m[1].trim();
+      // Filtrer les faux positifs (mots génériques)
+      if (!['AUTOCALSOL','INES','PVGIS','ENEDIS','RAPPORT','PRODUCTION','CONSOMMATION'].includes(name)) {
+        set('clientName', name);
+        break;
+      }
+    }
+  }
 
-  // Adresse
-  const addrMatch = text.match(/(\d+\s+(?:Rue|Avenue|Boulevard|Allée|Chemin|Impasse)[^\n]{5,60}(?:\d{5})[^\n]{0,40})/i);
-  if (addrMatch) set('clientAddress', addrMatch[1].trim());
+  // ── Adresse ──
+  // Cherche une adresse complète avec numéro + type de voie + code postal
+  const addrPatterns = [
+    /(\d+[,\s]+(?:Rue|Avenue|Boulevard|Allée|Chemin|Impasse|Place|Route|Voie|Quai|Passage)[^\n,]{3,60}\d{5}[^\n]{0,40})/i,
+    /(\d+\s+[A-Z][a-z]+[^\n]{5,50}\d{5}[^\n]{0,30})/,
+  ];
+  for (const pat of addrPatterns) {
+    const m = text.match(pat);
+    if (m) { set('clientAddress', m[1].trim().replace(/\s+/g, ' ')); break; }
+  }
 
-  // Puissance kWc
+  // ── Puissance kWc → calcul panneaux + surface ──
   const powMatch = text.match(/(\d+[.,]?\d*)\s*kWc/i);
-  if (powMatch) set('power', powMatch[1].replace(',', '.'));
+  if (powMatch) {
+    const kWc = parseFloat(powMatch[1].replace(',', '.'));
+    set('power', kWc);
+    // 1 panneau = 500 Wc = 0.5 kWc
+    const nbPanneaux = Math.round(kWc / 0.5);
+    // 1 panneau = 2.2 m² (L 2.094m x l 1.134m = 2.374m² mais on utilise 2.2m² surface utile)
+    const surface = Math.round(nbPanneaux * 2.2);
+    set('panels', nbPanneaux);
+    set('pvSurface', surface);
+  }
 
   // Production annuelle kWh ou MWh
   const prodMWh = text.match(/(\d+[.,]\d+)\s*MWh[\s\S]{0,30}?(?:produits|production|annuelle)/i);
@@ -950,14 +992,62 @@ function extractAutoCalSol(text) {
   const capexMatch = text.match(/(\d[\d\s]{3,6})\s*€[\s\S]{0,20}?(?:Investissement|CAPEX)/i);
   if (capexMatch) set('cashPrice', capexMatch[1].replace(/\s/g,''));
 
-  // Date
+  // ── Orientation ──
+  // AutoCalSol indique "Sud", "Nord-Est", "0 °", etc.
+  const orientPatterns = [
+    /Orientation\s*[:\-]?\s*([A-Za-zÀ-ÿ\-]+)/i,
+    /Orientation\s+(\d+\s*°)/i,
+    /([A-Z][a-z]+(?:[\s\-][A-Z][a-z]+)?)\s*Orientation/i,
+    /Orientation\s*\n\s*([^\n]{2,20})/i,
+  ];
+  for (const pat of orientPatterns) {
+    const m = text.match(pat);
+    if (m && m[1] && m[1].length < 30) {
+      set('orientation', m[1].trim());
+      break;
+    }
+  }
+
+  // ── Inclinaison ──
+  const inclPatterns = [
+    /Inclinaison\s*[:\-]?\s*(\d+[.,]?\d*)\s*°/i,
+    /(\d+)\s*°\s*Inclinaison/i,
+    /Inclinaison\s*\n\s*(\d+[.,]?\d*)\s*°/i,
+  ];
+  for (const pat of inclPatterns) {
+    const m = text.match(pat);
+    if (m) { set('inclination', m[1]); break; }
+  }
+
+  // ── Taux autoproduction / surplus ──
+  const surplusMatch = text.match(/(\d+[.,]\d+)\s*%[\s\S]{0,30}?(?:Injectés|surplus|injection|réseau public)/i);
+  if (surplusMatch) { set('surplusRate', surplusMatch[1].replace(',','.')); syncRates('surplus'); }
+
+  // ── Date ──
   const dateMatch = text.match(/Le\s+(\d{2})\/(\d{2})\/(\d{4})/);
   if (dateMatch) {
     const d = `${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]}`;
     set('propDate', d);
-    // validité +15 jours
     const dt = new Date(d); dt.setDate(dt.getDate() + 15);
     set('propValidity', dt.toISOString().split('T')[0]);
+  }
+
+  // ── Numérotation automatique si pas encore rempli ──
+  const propRefEl = document.getElementById('propRef');
+  if (!propRefEl.value) {
+    propRefEl.value = generatePropRef();
+    propRefEl.classList.add('extracted');
+  }
+
+  // ── Code client automatique ──
+  const clientCodeEl = document.getElementById('clientCode');
+  if (!clientCodeEl.value) {
+    const now = new Date();
+    const yy = String(now.getFullYear()).slice(2);
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const seq = String(Math.floor(Math.random() * 90000) + 10000);
+    clientCodeEl.value = 'CU' + yy + mm + '-' + seq;
+    clientCodeEl.classList.add('extracted');
   }
 }
 
@@ -1583,11 +1673,18 @@ document.getElementById('cashPrice').addEventListener('input', function() {
   updateFinSummary();
 });
 
-// Set today's date by default
+// Init au chargement
 const today = new Date();
 document.getElementById('propDate').value = today.toISOString().split('T')[0];
 const validity = new Date(today); validity.setDate(validity.getDate() + 15);
 document.getElementById('propValidity').value = validity.toISOString().split('T')[0];
+
+// Numérotation automatique dès l'ouverture
+document.getElementById('propRef').value = generatePropRef();
+const yy = String(today.getFullYear()).slice(2);
+const mm = String(today.getMonth() + 1).padStart(2, '0');
+const seq = String(Math.floor(Math.random() * 90000) + 10000);
+document.getElementById('clientCode').value = 'CU' + yy + mm + '-' + seq;
 
 </script>
 </body>
