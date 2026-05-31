@@ -1094,19 +1094,30 @@ function runSim() {
   simData = [];
 
   if (simMode === 'lisse') {
-    // Mode lissé : économie moyenne annuelle sur 30 ans, production constante, tarif moyen
-    const avgTarif = tarif0 * (1 + (1 + inflation) ** 30) / 2; // simplification
-    const avgProd = prod0 * (1 - degradation * 15); // milieu de vie
-    const avgRev = avgProd * acRate * tarif0 + avgProd * surplusRate * surplusPrice;
+    // Mode lissé : on calcule d'abord les revenus RÉELS sur 30 ans (avec dégradation + inflation)
+    // puis on divise par 30 pour obtenir une économie moyenne annuelle constante
+    // pendant les années de financement, on déduit la mensualité annuelle
+
+    let totalRevReal = 0;
+    for (let y = 1; y <= 30; y++) {
+      const prod = prod0 * (1 - degradation) ** (y - 1);
+      let tarif;
+      if (y <= priceLock) {
+        tarif = tarif0;
+      } else {
+        const yearsInflated = y - Math.max(priceLock, inflStart - 1);
+        tarif = yearsInflated > 0 ? tarif0 * (1 + inflation) ** yearsInflated : tarif0;
+      }
+      totalRevReal += prod * acRate * tarif + prod * surplusRate * surplusPrice;
+    }
+    const avgRevAnnual = Math.round(totalRevReal / 30); // économie moyenne lissée
 
     let cum = 0;
     for (let y = 1; y <= 30; y++) {
       const fin = y <= finYears ? annualFin : 0;
-      // Dans le lissé on utilise le tarif what-if constant
-      const rev = Math.round(prod0 * acRate * tarif0 + prod0 * surplusRate * surplusPrice);
-      const net = rev - fin;
+      const net = avgRevAnnual - fin;
       cum += net;
-      simData.push({ y, prod: prod0, tarif: tarif0, rev, fin, net, cum });
+      simData.push({ y, prod: prod0, tarif: tarif0, rev: avgRevAnnual, fin, net, cum });
     }
   } else {
     // Mode réel année par année
