@@ -1166,12 +1166,13 @@ function runSim() {
 
   if (simMode === 'lisse') {
     // Mode lissé :
-    // 1. Calcul des revenus RÉELS année par année sur 30 ans (dégradation + inflation)
-    // 2. Total divisé par 30 = économie moyenne annuelle lissée
-    // 3. Pendant les années de financement : gain net = moyenne - mensualité annuelle
-    // 4. Après financement : gain net = moyenne seule
+    // 1. Calcul réel complet sur 30 ans (dégradation + inflation) → gains nets totaux
+    // 2. Gains nets 30 ans / 30 = gain moyen annuel
+    // 3. Gains nets 30 ans / 30 / 12 = gain moyen mensuel
+    // Pas de tableau annuel — uniquement les KPIs et le graphique simplifié
 
-    let totalRevReal = 0;
+    // Calcul réel pour obtenir les gains nets totaux
+    let totalNets = 0;
     for (let y = 1; y <= 30; y++) {
       const prod = prod0 * (1 - degradation) ** (y - 1);
       let tarif;
@@ -1181,19 +1182,27 @@ function runSim() {
         const yearsInflated = y - Math.max(priceLock, inflStart - 1);
         tarif = yearsInflated > 0 ? tarif0 * (1 + inflation) ** yearsInflated : tarif0;
       }
-      totalRevReal += prod * acRate * tarif + prod * surplusRate * surplusPrice;
-    }
-    // Économie moyenne annuelle = total réel 30 ans / 30
-    const avgRevAnnual = Math.round(totalRevReal / 30);
-
-    let cum = 0;
-    for (let y = 1; y <= 30; y++) {
+      const rev = prod * acRate * tarif + prod * surplusRate * surplusPrice;
       const fin = y <= finYears ? annualFin : 0;
-      // Gain net = économie moyenne - échéance annuelle (0 après financement)
-      const net = avgRevAnnual - fin;
-      cum += net;
-      simData.push({ y, prod: Math.round(prod0), tarif: tarif0, rev: avgRevAnnual, fin, net, cum });
+      totalNets += rev - fin;
     }
+
+    const gainsNets30 = Math.round(totalNets);          // Gains nets 30 ans
+    const gainMoyenAnnuel = Math.round(gainsNets30 / 30); // / 30
+    const gainMoyenMensuel = Math.round(gainsNets30 / 30 / 12); // / 30 / 12
+
+    // On stocke uniquement 2 points pour le graphique (pendant financement / après)
+    // et on remplit simData avec des lignes vides pour les KPIs
+    simData = [{
+      y: 'lisse',
+      gainsNets30,
+      gainMoyenAnnuel,
+      gainMoyenMensuel,
+      finYears,
+      annualFin,
+      lisse: true
+    }];
+
   } else {
     // Mode réel année par année
     let cum = 0;
@@ -1220,6 +1229,34 @@ function runSim() {
 }
 
 function updateKPIs() {
+  if (simMode === 'lisse' && simData[0] && simData[0].lisse) {
+    const d = simData[0];
+    document.getElementById('kpiDeficit').textContent = '—';
+    document.getElementById('kpiDeficit').className = 'kpi-val';
+    document.getElementById('kpiRetour').textContent = '—';
+    document.getElementById('kpiGains30').textContent = fmtSign(d.gainsNets30) + ' €';
+    document.getElementById('kpiGains30').className = 'kpi-val pos';
+    // Gain moyen mensuel avec et sans financement
+    const avecFin = Math.round((d.gainsNets30 / 30 / 12) - (d.annualFin / 12));
+    const sansFin = Math.round(d.gainsNets30 / 30 / 12);
+    document.getElementById('kpiAn1').textContent = sansFin + ' €/mois';
+
+    // Mettre à jour le label du KPI
+    document.querySelector('#kpiAn1').parentElement.querySelector('.kpi-lbl').textContent = 'Gain moyen mensuel (30 ans)';
+    document.querySelector('#kpiGains30').parentElement.querySelector('.kpi-lbl').textContent = 'Gains nets 30 ans';
+    document.querySelector('#kpiDeficit').parentElement.querySelector('.kpi-lbl').textContent = 'Gain annuel moyen';
+    document.getElementById('kpiDeficit').textContent = fmtSign(d.gainMoyenAnnuel) + ' €';
+    document.getElementById('kpiDeficit').className = 'kpi-val ' + (d.gainMoyenAnnuel >= 0 ? 'pos' : 'neg');
+    document.querySelector('#kpiRetour').parentElement.querySelector('.kpi-lbl').textContent = 'Pendant financement';
+    document.getElementById('kpiRetour').textContent = fmtSign(avecFin) + ' €/mois';
+    return;
+  }
+  // Reset labels for réel mode
+  document.querySelector('#kpiDeficit').parentElement.querySelector('.kpi-lbl').textContent = 'Déficit cumulé max';
+  document.querySelector('#kpiRetour').parentElement.querySelector('.kpi-lbl').textContent = 'Retour positif cumulé';
+  document.querySelector('#kpiGains30').parentElement.querySelector('.kpi-lbl').textContent = 'Gains nets 30 ans';
+  document.querySelector('#kpiAn1').parentElement.querySelector('.kpi-lbl').textContent = 'Résultat an 1 (mois)';
+
   const minCum = Math.min(...simData.map(d => d.cum));
   const retour = simData.find(d => d.cum >= 0);
   const gains30 = simData[29].cum;
@@ -1237,8 +1274,16 @@ function updateKPIs() {
 function renderTable() {
   const thead = document.getElementById('simThead');
   const tbody = document.getElementById('simTbody');
+  const wrap = document.getElementById('sim-table-wrap') || document.querySelector('.sim-table-wrap');
 
   if (simMode === 'lisse') {
+    // Pas de tableau en mode lissé
+    thead.innerHTML = '';
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--gray);padding:1.5rem;font-style:italic">Mode lissé — le tableau annuel n'est pas affiché. Basculez en mode Réel pour voir le détail année par année.</td></tr>';
+    return;
+  }
+
+  if (false) {
     thead.innerHTML = `<tr>
       <th>An</th><th>Revenus bruts</th><th>Financement</th><th>Gain net</th><th>Cumulé</th>
     </tr>`;
@@ -1279,34 +1324,54 @@ function renderChart() {
   const ctx = document.getElementById('simChart').getContext('2d');
   if (chart) chart.destroy();
 
+  if (simMode === 'lisse' && simData[0] && simData[0].lisse) {
+    const d = simData[0];
+    const avecFin = Math.round(d.gainsNets30 / 30 / 12) - Math.round(d.annualFin / 12);
+    const sansFin = Math.round(d.gainsNets30 / 30 / 12);
+    chart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: ['Pendant financement (' + d.finYears + ' ans)', 'Après financement'],
+        datasets: [{
+          label: 'Gain mensuel moyen',
+          data: [avecFin, sansFin],
+          backgroundColor: [avecFin < 0 ? 'rgba(198,40,40,0.5)' : 'rgba(76,175,80,0.5)', 'rgba(249,168,37,0.5)'],
+          borderColor: [avecFin < 0 ? '#C62828' : '#2E7D32', '#F9A825'],
+          borderWidth: 1.5,
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: ctx => fmtSign(ctx.raw) + ' €/mois' } }
+        },
+        scales: {
+          y: { ticks: { callback: v => fmtSign(v) + ' €', color: '#607D6B' }, grid: { color: '#EEF0EE' } },
+          x: { grid: { display: false }, ticks: { color: '#607D6B' } }
+        }
+      }
+    });
+    return;
+  }
+
   const labels = simData.map(d => 'An ' + d.y);
   const netData = simData.map(d => d.net);
   const cumData = simData.map(d => d.cum);
-
   chart = new Chart(ctx, {
     data: {
       labels,
       datasets: [
         {
-          type: 'bar',
-          label: 'Gain net annuel',
-          data: netData,
+          type: 'bar', label: 'Gain net annuel', data: netData,
           backgroundColor: netData.map(v => v < 0 ? 'rgba(198,40,40,0.5)' : 'rgba(76,175,80,0.5)'),
           borderColor: netData.map(v => v < 0 ? '#C62828' : '#2E7D32'),
-          borderWidth: 1,
-          yAxisID: 'y',
+          borderWidth: 1, yAxisID: 'y',
         },
         {
-          type: 'line',
-          label: 'Cumulé',
-          data: cumData,
-          borderColor: '#F9A825',
-          backgroundColor: 'rgba(249,168,37,0.1)',
-          borderWidth: 2.5,
-          pointRadius: 2,
-          tension: 0.3,
-          yAxisID: 'y1',
-          fill: false,
+          type: 'line', label: 'Cumulé', data: cumData,
+          borderColor: '#F9A825', backgroundColor: 'rgba(249,168,37,0.1)',
+          borderWidth: 2.5, pointRadius: 2, tension: 0.3, yAxisID: 'y1', fill: false,
         }
       ]
     },
@@ -1314,11 +1379,7 @@ function renderChart() {
       responsive: true, maintainAspectRatio: false,
       plugins: {
         legend: { position: 'top', labels: { font: { family: 'DM Sans' }, color: '#607D6B' } },
-        tooltip: {
-          callbacks: {
-            label: ctx => ctx.dataset.label + ' : ' + fmtSign(ctx.raw) + ' €'
-          }
-        }
+        tooltip: { callbacks: { label: ctx => ctx.dataset.label + ' : ' + fmtSign(ctx.raw) + ' €' } }
       },
       scales: {
         y: { position: 'left', grid: { color: '#EEF0EE' }, ticks: { callback: v => (v/1000)+'k €', color: '#607D6B' } },
@@ -1329,7 +1390,6 @@ function renderChart() {
   });
 }
 
-// ─── RECAP STEP 4 ────────────────────────────────────────────────────────────
 function updateRecap() {
   document.getElementById('retainedMode').textContent = simMode === 'lisse' ? 'Lissé 30 ans' : 'Réel an/an';
   document.getElementById('recapPower').textContent = (document.getElementById('power').value || '—') + ' kWc';
