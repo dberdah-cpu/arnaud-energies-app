@@ -372,6 +372,15 @@ td:first-child { text-align: center; font-weight: 600; color: var(--gray); }
   main { padding: 1rem; }
 }
 
+/* ── BATTERIE ── */
+.profile-btn-active { background: var(--green) !important; color: white !important; border-color: var(--green) !important; }
+#batteryTable tbody tr.recommended { background: #E8F5E9; font-weight: 600; }
+#batteryTable tbody tr.recommended td { color: var(--green); }
+.bat-badge { display:inline-block; padding:2px 10px; border-radius:12px; font-size:0.75rem; font-weight:700; }
+.bat-optimal { background:#E8F5E9; color:var(--green); }
+.bat-good { background:#FFF8E1; color:var(--gold2); }
+.bat-low { background:#F5F5F5; color:var(--gray); }
+
 /* ── SPINNER ── */
 .spinner {
   width: 18px; height: 18px;
@@ -610,6 +619,122 @@ td:first-child { text-align: center; font-weight: 600; color: var(--gray); }
         <div class="kpi-card">
           <div class="kpi-val" id="sumDuration">—</div>
           <div class="kpi-lbl">Durée financement</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── BATTERIE ── -->
+    <div class="card" id="batteryCard">
+      <div class="card-header">
+        <div class="card-icon">🔋</div>
+        <div>
+          <div class="card-title">Système de stockage — Batterie</div>
+          <div class="card-sub">Optimisation automatique via données météo PVGIS heure par heure</div>
+        </div>
+        <div style="margin-left:auto">
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-weight:600;color:var(--green)">
+            <input type="checkbox" id="batteryEnabled" onchange="toggleBattery()" style="width:18px;height:18px;accent-color:var(--lime)">
+            Activer le stockage batterie
+          </label>
+        </div>
+      </div>
+
+      <div id="batteryPanel" style="display:none">
+
+        <!-- Profil consommation -->
+        <div class="section-title">Profil de consommation du site</div>
+        <div style="margin-bottom:1rem">
+          <label class="field-label">Sélectionnez un profil type ou personnalisez</label>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px" id="profileBtns">
+            <button class="btn btn-sm btn-outline" onclick="setProfile('pharmacie')">💊 Pharmacie / Bureau (80% jour)</button>
+            <button class="btn btn-sm btn-outline" onclick="setProfile('commerce')">🛍️ Commerce (70% jour)</button>
+            <button class="btn btn-sm btn-outline" onclick="setProfile('industrie')">🏭 Industrie / Entrepôt (65% jour)</button>
+            <button class="btn btn-sm btn-outline" onclick="setProfile('restauration')">🍽️ Restauration (60% jour)</button>
+            <button class="btn btn-sm btn-outline" onclick="setProfile('boulangerie')">🥐 Boulangerie (30% jour)</button>
+            <button class="btn btn-sm btn-outline" onclick="setProfile('froid')">❄️ Chambre froide 24/24 (50% jour)</button>
+          </div>
+        </div>
+        <div class="fields-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:1.5rem">
+          <div class="field-group">
+            <label class="field-label">Consommation jour (%) <small style="color:var(--gray)">(8h-20h)</small></label>
+            <input class="field-input" id="dayPct" type="number" min="0" max="100" value="70" oninput="syncNightPct()">
+          </div>
+          <div class="field-group">
+            <label class="field-label">Consommation nuit (%) <small style="color:var(--gray)">(20h-8h)</small></label>
+            <input class="field-input" id="nightPct" type="number" min="0" max="100" value="30" readonly style="background:#F5FAF5;color:var(--green)">
+          </div>
+          <div class="field-group">
+            <label class="field-label">Coordonnées GPS</label>
+            <input class="field-input" id="gpsCoords" placeholder="50.66, 3.07" type="text">
+          </div>
+        </div>
+
+        <!-- Bouton calcul PVGIS -->
+        <div style="text-align:center;margin-bottom:1.5rem">
+          <button class="btn btn-primary" onclick="calcBattery()" id="btnCalcBattery">
+            <span class="spinner" id="spinBattery"></span>
+            ⚡ Calculer la batterie optimale via PVGIS
+          </button>
+          <div id="pvgisStatus" style="font-size:0.8rem;color:var(--gray);margin-top:8px"></div>
+        </div>
+
+        <!-- Résultats optimisation -->
+        <div id="batteryResults" style="display:none">
+          <div class="section-title">Résultat de l'optimisation</div>
+
+          <!-- Tableau des tailles -->
+          <div style="overflow-x:auto;margin-bottom:1.5rem">
+            <table id="batteryTable">
+              <thead>
+                <tr>
+                  <th style="text-align:left">Capacité</th>
+                  <th>kWh supplémentaires</th>
+                  <th>Nouveau taux autoconso</th>
+                  <th>Gain annuel</th>
+                  <th>Gain 30 ans</th>
+                  <th>Recommandation</th>
+                </tr>
+              </thead>
+              <tbody id="batteryTableBody"></tbody>
+            </table>
+          </div>
+
+          <!-- KPIs batterie -->
+          <div class="kpi-bar">
+            <div class="kpi-card">
+              <div class="kpi-val pos" id="batKpiSize">—</div>
+              <div class="kpi-lbl">Taille recommandée</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-val pos" id="batKpiAutoconso">—</div>
+              <div class="kpi-lbl">Nouveau taux autoconso</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-val pos" id="batKpiGainAn">—</div>
+              <div class="kpi-lbl">Gain annuel batterie</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-val pos" id="batKpiGain30">—</div>
+              <div class="kpi-lbl">Gain supplémentaire 30 ans</div>
+            </div>
+          </div>
+
+          <!-- Capacité retenue -->
+          <div class="section-title" style="margin-top:1.5rem">Capacité retenue</div>
+          <div class="fields-grid" style="grid-template-columns:repeat(3,1fr)">
+            <div class="field-group">
+              <label class="field-label">Capacité batterie retenue (kWh)</label>
+              <input class="field-input" id="batterySize" type="number" step="5" value="0" oninput="updateBatteryChoice()">
+            </div>
+            <div class="field-group">
+              <label class="field-label">Gain annuel estimé (€)</label>
+              <input class="field-input" id="batteryGainYear" readonly style="background:#F5FAF5;color:var(--green);font-weight:600">
+            </div>
+            <div class="field-group">
+              <label class="field-label">Gain mensuel estimé (€/mois)</label>
+              <input class="field-input" id="batteryGainMonth" readonly style="background:#F5FAF5;color:var(--green);font-weight:600">
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -918,6 +1043,14 @@ function extractAutoCalSol(text) {
     }
   }
 
+  // ── Coordonnées GPS → champ batterie ──
+  const gpsMatchArr = text.match(/(\d{2}[.,]\d{3,6})\s*N[,\s]+(\d{1,3}[.,]\d{3,6})/i);
+  if (gpsMatchArr) {
+    const gpsStr = gpsMatchArr[1].replace(',','.') + ', ' + gpsMatchArr[2].replace(',','.');
+    set('gpsCoords', gpsStr);
+    window._extractedGPS = gpsStr;
+  }
+
   // ── Adresse : numéro + type de voie + code postal, SANS les coordonnées GPS ──
   // On coupe le texte avant les coordonnées GPS (ex: "50.66135 N" ou "50,6903")
   const textBeforeGPS = text.replace(/\d{2},?\d{3,5}\s*[NS][,\s]+\d+,?\d+\s*[EW].*/i, '');
@@ -1215,7 +1348,9 @@ function runSim() {
         const yearsInflated = y - Math.max(priceLock, inflStart - 1);
         tarif = yearsInflated > 0 ? tarif0 * (1 + inflation) ** yearsInflated : tarif0;
       }
-      const rev = Math.round(prod * acRate * tarif + prod * surplusRate * surplusPrice);
+      const revPV = Math.round(prod * acRate * tarif + prod * surplusRate * surplusPrice);
+      const revBat = Math.round(getBatteryGain()); // gain annuel batterie (constant)
+      const rev = revPV + revBat;
       const fin = y <= finYears ? annualFin : 0;
       const net = rev - fin;
       cum += net;
@@ -1748,6 +1883,296 @@ const yy = String(today.getFullYear()).slice(2);
 const mm = String(today.getMonth() + 1).padStart(2, '0');
 const seq = String(Math.floor(Math.random() * 90000) + 10000);
 document.getElementById('clientCode').value = 'CU' + yy + mm + '-' + seq;
+
+
+// ═══════════════════════════════════════════════════════════════
+// BATTERIE — Calcul via PVGIS heure par heure
+// ═══════════════════════════════════════════════════════════════
+
+let pvgisData = null;      // Données horaires PVGIS brutes
+let batteryOptim = null;   // Résultats optimisation par taille
+
+function toggleBattery() {
+  const enabled = document.getElementById('batteryEnabled').checked;
+  document.getElementById('batteryPanel').style.display = enabled ? 'block' : 'none';
+  // Sync coords depuis step 1 si disponibles
+  if (enabled) {
+    const gpsEl = document.getElementById('gpsCoords');
+    if (!gpsEl.value) {
+      // Essayer d'extraire depuis le champ adresse ou une valeur mémorisée
+      if (window._extractedGPS) gpsEl.value = window._extractedGPS;
+    }
+    runSim(); // Recalcul avec batterie
+  }
+}
+
+function setProfile(type) {
+  const profiles = {
+    pharmacie:   { day: 80, night: 20 },
+    commerce:    { day: 70, night: 30 },
+    industrie:   { day: 65, night: 35 },
+    restauration:{ day: 60, night: 40 },
+    boulangerie: { day: 30, night: 70 },
+    froid:       { day: 50, night: 50 },
+  };
+  const p = profiles[type];
+  if (!p) return;
+  document.getElementById('dayPct').value = p.day;
+  document.getElementById('nightPct').value = p.night;
+  // Highlight active button
+  document.querySelectorAll('#profileBtns button').forEach(b => b.classList.remove('profile-btn-active'));
+  event.target.classList.add('profile-btn-active');
+}
+
+function syncNightPct() {
+  const day = Math.min(100, Math.max(0, parseInt(document.getElementById('dayPct').value) || 0));
+  document.getElementById('nightPct').value = 100 - day;
+}
+
+async function calcBattery() {
+  const btn = document.getElementById('btnCalcBattery');
+  const spin = document.getElementById('spinBattery');
+  const status = document.getElementById('pvgisStatus');
+  btn.disabled = true; spin.classList.add('show');
+
+  // Récupérer coordonnées GPS
+  const gpsRaw = document.getElementById('gpsCoords').value.trim();
+  let lat, lon;
+  if (gpsRaw) {
+    const parts = gpsRaw.replace(/[NSEW]/gi,'').split(/[,\s]+/).map(parseFloat).filter(n => !isNaN(n));
+    if (parts.length >= 2) { lat = parts[0]; lon = parts[1]; }
+  }
+  if (!lat || !lon) {
+    showToast('⚠️ Coordonnées GPS manquantes — vérifiez le champ GPS');
+    btn.disabled = false; spin.classList.remove('show');
+    return;
+  }
+
+  const power = parseFloat(document.getElementById('power').value) || 35;
+  const consumption = parseFloat(document.getElementById('consumption').value) || 50000;
+  const dayPct = parseFloat(document.getElementById('dayPct').value) / 100;
+  const nightPct = 1 - dayPct;
+  const surplusPrice = parseFloat(document.getElementById('surplusPrice').value) || 0.069;
+  const elecPrice = parseFloat(document.getElementById('elecPrice').value) || 0.26;
+  const inclination = parseFloat(document.getElementById('inclination').value) || 30;
+  const orientVal = document.getElementById('orientation').value || 'Sud';
+  // Convertir orientation texte en azimuth
+  const azimuthMap = { 'Sud':0, 'Sud-Est':-45, 'Sud-Ouest':45, 'Est':-90, 'Ouest':90, 'Nord':180 };
+  const azimuth = azimuthMap[orientVal] || 0;
+
+  status.textContent = '⏳ Connexion à PVGIS — récupération des données horaires...';
+
+  try {
+    // Appel API PVGIS série horaire
+    const pvgisUrl = `https://re.jrc.ec.europa.eu/api/v5_2/seriescalc?lat=${lat}&lon=${lon}&startyear=2020&endyear=2020&pvcalculation=1&peakpower=${power}&loss=14&angle=${inclination}&aspect=${azimuth}&outputformat=json&browser=1`;
+
+    const resp = await fetch(pvgisUrl);
+    if (!resp.ok) throw new Error('PVGIS erreur ' + resp.status);
+    const json = await resp.json();
+    pvgisData = json.outputs.hourly; // 8760 points
+
+    status.textContent = `✅ ${pvgisData.length} heures récupérées — simulation en cours...`;
+
+    // Générer profil consommation horaire (8760h)
+    const hourlyConsumption = buildConsumptionProfile(consumption, dayPct, nightPct);
+
+    // Optimiser pour différentes tailles de batterie
+    const sizes = [5, 10, 15, 20, 25, 30, 40, 50];
+    batteryOptim = sizes.map(size => simulateBattery(pvgisData, hourlyConsumption, size, elecPrice, surplusPrice));
+
+    // Calculer sans batterie (référence)
+    const noBat = simulateBattery(pvgisData, hourlyConsumption, 0, elecPrice, surplusPrice);
+
+    // Trouver la taille optimale (meilleur ROI marginal)
+    const optimal = findOptimalSize(batteryOptim, noBat, elecPrice);
+
+    renderBatteryResults(batteryOptim, noBat, optimal);
+    document.getElementById('batteryResults').style.display = 'block';
+    status.textContent = `✅ Optimisation terminée — taille recommandée : ${optimal} kWh`;
+    showToast('✅ Calcul batterie terminé !');
+
+  } catch(err) {
+    console.error(err);
+    status.textContent = '❌ Erreur : ' + err.message;
+    showToast('❌ Erreur PVGIS : ' + err.message);
+  }
+
+  btn.disabled = false; spin.classList.remove('show');
+}
+
+function buildConsumptionProfile(annualKWh, dayPct, nightPct) {
+  // Répartition horaire sur 8760h avec variation saisonnière
+  // Jour = 8h-20h (12h), Nuit = 20h-8h (12h)
+  // Variation saisonnière : hiver +20% conso, été -10%
+  const seasonCoeff = (month) => {
+    // month 0-11
+    if (month <= 1 || month === 11) return 1.20; // Déc-Fév : hiver
+    if (month >= 2 && month <= 4) return 1.05;   // Mar-Mai : printemps
+    if (month >= 5 && month <= 8) return 0.90;   // Juin-Sep : été
+    return 1.05;                                  // Oct-Nov : automne
+  };
+
+  const hourly = new Array(8760).fill(0);
+  let totalWeight = 0;
+
+  // Calculer les poids pour normaliser
+  for (let h = 0; h < 8760; h++) {
+    const month = Math.floor(h / (8760/12));
+    const hour = h % 24;
+    const isDay = hour >= 8 && hour < 20;
+    const baseShare = isDay ? dayPct / 12 : nightPct / 12;
+    const weight = baseShare * seasonCoeff(month);
+    hourly[h] = weight;
+    totalWeight += weight;
+  }
+
+  // Normaliser pour que la somme = annualKWh
+  return hourly.map(w => w * annualKWh / totalWeight);
+}
+
+function simulateBattery(pvgisHourly, consumption, batteryKWh, elecPrice, surplusPrice) {
+  const efficiency = 0.90; // rendement charge/décharge 90%
+  let batteryLevel = 0;
+  let totalAutoconso = 0;
+  let totalSurplus = 0;
+  let totalSoutirage = 0;
+  let totalProduction = 0;
+
+  for (let h = 0; h < pvgisHourly.length; h++) {
+    const prod = (pvgisHourly[h].P || 0) / 1000; // W → kWh
+    const conso = consumption[h];
+    totalProduction += prod;
+
+    let balance = prod - conso;
+
+    if (balance >= 0) {
+      // Surplus — autoconsommation directe + charge batterie
+      totalAutoconso += conso;
+      const canCharge = Math.min(balance, (batteryKWh - batteryLevel) / efficiency);
+      batteryLevel += canCharge * efficiency;
+      const remainingSurplus = balance - canCharge;
+      totalSurplus += remainingSurplus;
+    } else {
+      // Déficit — décharge batterie puis soutirage réseau
+      totalAutoconso += prod;
+      const needed = -balance;
+      const fromBattery = Math.min(needed, batteryLevel * efficiency);
+      batteryLevel -= fromBattery / efficiency;
+      totalAutoconso += fromBattery;
+      const fromGrid = needed - fromBattery;
+      totalSoutirage += fromGrid;
+    }
+  }
+
+  const autoconsoRate = totalProduction > 0 ? (totalAutoconso / totalProduction) * 100 : 0;
+  const autoprodRate = (totalProduction - totalSurplus) / (totalProduction + totalSoutirage) * 100;
+
+  // Économies annuelles
+  const savingsAutoconso = totalAutoconso * elecPrice;
+  const revenueSurplus = totalSurplus * surplusPrice;
+  const totalSavings = savingsAutoconso + revenueSurplus;
+
+  return {
+    size: batteryKWh,
+    autoconsoRate: Math.round(autoconsoRate * 10) / 10,
+    totalAutoconso: Math.round(totalAutoconso),
+    totalSurplus: Math.round(totalSurplus),
+    totalSoutirage: Math.round(totalSoutirage),
+    totalSavings: Math.round(totalSavings),
+  };
+}
+
+function findOptimalSize(results, noBat, elecPrice) {
+  // Trouver la taille où le gain marginal > seuil rentabilité
+  // Coût approximatif batterie : 400 €/kWh installé, amorti sur durée financement
+  const finYears = parseInt(document.getElementById('duration').value) / 12 || 7;
+  let bestSize = 0;
+  let bestROI = 0;
+
+  for (const r of results) {
+    if (r.size === 0) continue;
+    const gainVsNoBat = r.totalSavings - noBat.totalSavings;
+    const batteryCost = r.size * 400; // ~400 €/kWh
+    const roi = gainVsNoBat * finYears / batteryCost; // ROI sur durée financement
+    if (roi > bestROI && gainVsNoBat > 0) {
+      bestROI = roi;
+      bestSize = r.size;
+    }
+  }
+  return bestSize || 10;
+}
+
+function renderBatteryResults(results, noBat, optimalSize) {
+  const tbody = document.getElementById('batteryTableBody');
+  tbody.innerHTML = '';
+
+  results.forEach(r => {
+    const gainVsNoBat = r.totalSavings - noBat.totalSavings;
+    const gainKWh = r.totalAutoconso - noBat.totalAutoconso;
+    const isOptimal = r.size === optimalSize;
+    const badge = isOptimal
+      ? '<span class="bat-badge bat-optimal">✓ Recommandé</span>'
+      : gainVsNoBat > 500 ? '<span class="bat-badge bat-good">Bon</span>'
+      : '<span class="bat-badge bat-low">Faible gain</span>';
+
+    tbody.innerHTML += `<tr class="${isOptimal ? 'recommended' : ''}">
+      <td style="text-align:center;font-weight:700">${r.size} kWh</td>
+      <td>+${gainKWh.toLocaleString('fr-FR')} kWh</td>
+      <td>${r.autoconsoRate} %</td>
+      <td style="color:var(--green);font-weight:600">+${Math.round(gainVsNoBat).toLocaleString('fr-FR')} €</td>
+      <td style="color:var(--green);font-weight:600">+${Math.round(gainVsNoBat*30).toLocaleString('fr-FR')} €</td>
+      <td>${badge}</td>
+    </tr>`;
+  });
+
+  // KPIs
+  const optResult = results.find(r => r.size === optimalSize) || results[0];
+  const gain = optResult.totalSavings - noBat.totalSavings;
+  document.getElementById('batKpiSize').textContent = optimalSize + ' kWh';
+  document.getElementById('batKpiAutoconso').textContent = optResult.autoconsoRate + ' %';
+  document.getElementById('batKpiGainAn').textContent = '+' + Math.round(gain).toLocaleString('fr-FR') + ' €/an';
+  document.getElementById('batKpiGain30').textContent = '+' + Math.round(gain*30).toLocaleString('fr-FR') + ' €';
+
+  // Pré-remplir capacité retenue
+  document.getElementById('batterySize').value = optimalSize;
+  updateBatteryChoice();
+}
+
+function updateBatteryChoice() {
+  if (!batteryOptim) return;
+  const size = parseFloat(document.getElementById('batterySize').value) || 0;
+  // Interpoler si la taille n'est pas dans les résultats
+  const noBat = batteryOptim.find(r => r.size === 0) ||
+    { totalSavings: batteryOptim[0].totalSavings - (batteryOptim[1].totalSavings - batteryOptim[0].totalSavings) };
+
+  // Trouver la valeur la plus proche
+  const closest = batteryOptim.reduce((prev, curr) =>
+    Math.abs(curr.size - size) < Math.abs(prev.size - size) ? curr : prev
+  );
+  const gainAn = closest.totalSavings - (batteryOptim[0] ? batteryOptim[0].totalSavings : 0);
+  const gainMois = Math.round(gainAn / 12);
+
+  document.getElementById('batteryGainYear').value = '+' + Math.round(gainAn).toLocaleString('fr-FR') + ' €/an';
+  document.getElementById('batteryGainMonth').value = '+' + gainMois + ' €/mois';
+
+  // Mettre à jour la simulation avec le gain batterie
+  runSim();
+}
+
+function getBatteryGain() {
+  // Retourne le gain annuel de la batterie pour l'intégrer dans le calcul de simulation
+  if (!document.getElementById('batteryEnabled').checked) return 0;
+  if (!batteryOptim || batteryOptim.length === 0) return 0;
+  const size = parseFloat(document.getElementById('batterySize').value) || 0;
+  if (size === 0) return 0;
+  const closest = batteryOptim.reduce((prev, curr) =>
+    Math.abs(curr.size - size) < Math.abs(prev.size - size) ? curr : prev
+  );
+  // Gain vs premier résultat (sans batterie = size 0 dans notre sim)
+  const ref = batteryOptim.find(r => r.size === 0);
+  if (!ref) return 0;
+  return closest.totalSavings - ref.totalSavings;
+}
 
 </script>
 </body>
