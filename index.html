@@ -1,0 +1,1583 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Arnaud Energies — Générateur de dossiers</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet">
+<style>
+:root {
+  --dark: #0F2419;
+  --green: #1E5C2E;
+  --lime: #4CAF50;
+  --gold: #F9A825;
+  --gold2: #E65100;
+  --white: #FFFFFF;
+  --offwhite: #F4FAF5;
+  --border: #D0E8D4;
+  --gray: #607D6B;
+  --lgray: #A5BEA8;
+  --red: #C62828;
+  --shadow: 0 4px 24px rgba(15,36,25,0.10);
+  --shadow-lg: 0 8px 40px rgba(15,36,25,0.16);
+  --radius: 12px;
+  --radius-sm: 8px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'DM Sans', sans-serif;
+  background: var(--offwhite);
+  color: var(--dark);
+  min-height: 100vh;
+}
+
+/* ── HEADER ── */
+header {
+  background: var(--dark);
+  padding: 0 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 64px;
+  position: sticky; top: 0; z-index: 100;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+}
+.logo { display: flex; align-items: center; gap: 12px; }
+.logo-icon {
+  width: 36px; height: 36px;
+  background: var(--lime);
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px;
+}
+.logo-text { font-family: 'DM Serif Display', serif; color: var(--white); font-size: 1.2rem; }
+.logo-sub { color: var(--lgray); font-size: 0.75rem; margin-top: 1px; }
+.header-steps { display: flex; gap: 4px; }
+.step-dot {
+  width: 28px; height: 28px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 600; cursor: pointer;
+  border: 2px solid transparent;
+  transition: all 0.2s;
+  color: var(--lgray);
+  border-color: #2A4A30;
+}
+.step-dot.active { background: var(--lime); color: var(--white); border-color: var(--lime); }
+.step-dot.done { background: #1E5C2E; color: var(--lgray); border-color: #2A4A30; }
+
+/* ── MAIN ── */
+main { max-width: 1100px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+
+/* ── CARDS ── */
+.card {
+  background: var(--white);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  border: 1px solid var(--border);
+  padding: 2rem;
+  margin-bottom: 1.5rem;
+}
+.card-header {
+  display: flex; align-items: center; gap: 12px;
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+.card-icon {
+  width: 40px; height: 40px;
+  background: linear-gradient(135deg, var(--green), var(--lime));
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px; color: white; flex-shrink: 0;
+}
+.card-title { font-family: 'DM Serif Display', serif; font-size: 1.2rem; color: var(--dark); }
+.card-sub { font-size: 0.8rem; color: var(--gray); margin-top: 2px; }
+
+/* ── SCREEN SYSTEM ── */
+.screen { display: none; }
+.screen.active { display: block; }
+
+/* ── STEP 1 - IMPORT ── */
+.drop-zone {
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 3rem 2rem;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: var(--offwhite);
+}
+.drop-zone:hover, .drop-zone.dragging {
+  border-color: var(--lime);
+  background: #E8F5E9;
+}
+.drop-icon { font-size: 2.5rem; margin-bottom: 1rem; opacity: 0.6; }
+.drop-title { font-size: 1rem; font-weight: 600; color: var(--dark); margin-bottom: 6px; }
+.drop-sub { font-size: 0.85rem; color: var(--gray); }
+.drop-btn {
+  margin-top: 1rem;
+  display: inline-block;
+  background: var(--green);
+  color: white;
+  padding: 8px 20px;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.fields-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 1rem;
+}
+.field-group { display: flex; flex-direction: column; gap: 4px; }
+.field-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--gray);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.field-input {
+  padding: 8px 12px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.9rem;
+  color: var(--dark);
+  background: var(--white);
+  transition: border-color 0.15s;
+  width: 100%;
+}
+.field-input:focus { outline: none; border-color: var(--lime); }
+.field-input.extracted { background: #F0FBF0; border-color: #A5D6A7; }
+textarea.field-input { resize: vertical; min-height: 80px; }
+
+.section-title {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--lime);
+  margin: 1.5rem 0 0.75rem;
+  display: flex; align-items: center; gap: 8px;
+}
+.section-title::after {
+  content: ''; flex: 1; height: 1px; background: var(--border);
+}
+
+/* ── FINANCEMENT ── */
+.fin-tabs { display: flex; gap: 8px; margin-bottom: 1.5rem; }
+.fin-tab {
+  flex: 1; padding: 10px; border-radius: var(--radius-sm);
+  border: 2px solid var(--border);
+  text-align: center; cursor: pointer;
+  font-size: 0.9rem; font-weight: 500;
+  transition: all 0.2s; color: var(--gray);
+}
+.fin-tab.active { border-color: var(--lime); background: #E8F5E9; color: var(--green); }
+.fin-panel { display: none; }
+.fin-panel.active { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem; }
+
+/* ── STEP 3 - SIMULATION ── */
+.mode-toggle {
+  display: inline-flex;
+  background: var(--offwhite);
+  border: 1.5px solid var(--border);
+  border-radius: 30px;
+  padding: 3px;
+  gap: 2px;
+}
+.mode-btn {
+  padding: 6px 18px;
+  border-radius: 24px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: var(--gray);
+  border: none; background: none;
+}
+.mode-btn.active { background: var(--dark); color: var(--gold); }
+
+.kpi-bar {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+.kpi-card {
+  background: var(--dark);
+  border-radius: var(--radius-sm);
+  padding: 1rem;
+  text-align: center;
+}
+.kpi-val { font-family: 'DM Serif Display', serif; font-size: 1.5rem; color: var(--gold); }
+.kpi-val.neg { color: #EF9A9A; }
+.kpi-val.pos { color: #A5D6A7; }
+.kpi-lbl { font-size: 0.72rem; color: var(--lgray); margin-top: 4px; }
+
+.sliders-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+.slider-group { display: flex; flex-direction: column; gap: 6px; }
+.slider-header { display: flex; justify-content: space-between; align-items: center; }
+.slider-label { font-size: 0.8rem; font-weight: 600; color: var(--gray); }
+.slider-val {
+  font-size: 0.85rem; font-weight: 700; color: var(--green);
+  background: #E8F5E9; padding: 2px 10px; border-radius: 12px;
+}
+input[type=range] {
+  width: 100%; accent-color: var(--lime);
+  height: 4px; cursor: pointer;
+}
+
+.advanced-toggle {
+  font-size: 0.8rem; color: var(--lime); cursor: pointer;
+  display: flex; align-items: center; gap: 6px;
+  margin-bottom: 1rem; font-weight: 500;
+}
+.advanced-panel {
+  display: none;
+  background: var(--offwhite);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+}
+.advanced-panel.open { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem; }
+
+/* ── TABLE ── */
+.sim-table-wrap { overflow-x: auto; }
+table {
+  width: 100%; border-collapse: collapse;
+  font-size: 0.82rem;
+}
+thead tr { background: var(--dark); }
+thead th {
+  padding: 8px 10px; color: var(--gold);
+  font-weight: 600; text-align: right;
+  font-size: 0.75rem; white-space: nowrap;
+}
+thead th:first-child { text-align: center; }
+tbody tr:nth-child(even) { background: #F8FBF8; }
+tbody tr:hover { background: #EEF8EE; }
+td {
+  padding: 6px 10px; text-align: right;
+  border-bottom: 1px solid #EEF0EE;
+}
+td:first-child { text-align: center; font-weight: 600; color: var(--gray); }
+.td-neg { color: var(--red); font-weight: 600; }
+.td-pos { color: var(--green); font-weight: 600; }
+.td-zero { color: var(--gold2); font-weight: 700; }
+.cum-neg { background: #FFF3F3 !important; }
+.cum-pos { background: #F0FBF0 !important; }
+
+/* ── CHART ── */
+.chart-wrap { height: 280px; margin: 1.5rem 0; }
+
+/* ── STEP 4 - GÉNÉRATION ── */
+.gen-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.5rem;
+}
+.gen-card {
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  text-align: center;
+  transition: all 0.2s;
+}
+.gen-card:hover { border-color: var(--lime); box-shadow: var(--shadow); }
+.gen-icon { font-size: 2rem; margin-bottom: 0.75rem; }
+.gen-title { font-weight: 700; font-size: 1rem; margin-bottom: 4px; }
+.gen-sub { font-size: 0.8rem; color: var(--gray); margin-bottom: 1rem; }
+
+/* ── BUTTONS ── */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  gap: 8px; padding: 10px 24px;
+  border-radius: 8px; border: none; cursor: pointer;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.9rem; font-weight: 600;
+  transition: all 0.15s;
+}
+.btn-primary { background: var(--green); color: white; }
+.btn-primary:hover { background: var(--lime); }
+.btn-gold { background: var(--gold); color: var(--dark); }
+.btn-gold:hover { background: #FFB300; }
+.btn-outline { background: white; color: var(--dark); border: 1.5px solid var(--border); }
+.btn-outline:hover { border-color: var(--lime); }
+.btn-full { width: 100%; }
+.btn-sm { padding: 6px 14px; font-size: 0.8rem; }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.nav-row {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-top: 2rem; padding-top: 1.5rem;
+  border-top: 1px solid var(--border);
+}
+
+/* ── BADGE ── */
+.badge {
+  display: inline-block; padding: 2px 10px;
+  border-radius: 12px; font-size: 0.72rem; font-weight: 600;
+}
+.badge-green { background: #E8F5E9; color: var(--green); }
+.badge-gold { background: #FFF8E1; color: var(--gold2); }
+.badge-red { background: #FFEBEE; color: var(--red); }
+
+/* ── TOAST ── */
+.toast {
+  position: fixed; bottom: 2rem; right: 2rem;
+  background: var(--dark); color: white;
+  padding: 12px 20px; border-radius: var(--radius-sm);
+  font-size: 0.85rem; box-shadow: var(--shadow-lg);
+  transform: translateY(80px); opacity: 0;
+  transition: all 0.3s; z-index: 999;
+}
+.toast.show { transform: translateY(0); opacity: 1; }
+
+/* ── PROGRESS ── */
+.progress-bar {
+  height: 3px; background: var(--border);
+  border-radius: 2px; margin-bottom: 2rem;
+}
+.progress-fill {
+  height: 100%; background: linear-gradient(90deg, var(--green), var(--lime));
+  border-radius: 2px; transition: width 0.4s;
+}
+
+/* ── LISSÉ vs RÉEL toggle ── */
+.sim-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;
+}
+
+/* ── RESPONSIVE ── */
+@media (max-width: 768px) {
+  .kpi-bar { grid-template-columns: repeat(2, 1fr); }
+  .sliders-row { grid-template-columns: 1fr; }
+  .gen-grid { grid-template-columns: 1fr; }
+  header { padding: 0 1rem; }
+  main { padding: 1rem; }
+}
+
+/* ── SPINNER ── */
+.spinner {
+  width: 18px; height: 18px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  display: none;
+}
+.spinner.show { display: inline-block; }
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <div class="logo">
+    <div class="logo-icon">☀️</div>
+    <div>
+      <div class="logo-text">Arnaud Energies</div>
+      <div class="logo-sub">Générateur de dossiers photovoltaïques</div>
+    </div>
+  </div>
+  <div class="header-steps">
+    <div class="step-dot active" id="dot1" onclick="goStep(1)">1</div>
+    <div class="step-dot" id="dot2" onclick="goStep(2)">2</div>
+    <div class="step-dot" id="dot3" onclick="goStep(3)">3</div>
+    <div class="step-dot" id="dot4" onclick="goStep(4)">4</div>
+  </div>
+</header>
+
+<main>
+  <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:25%"></div></div>
+
+  <!-- ══════════════════════════════════════════════
+       SCREEN 1 — IMPORT & DONNÉES
+  ══════════════════════════════════════════════ -->
+  <div class="screen active" id="screen1">
+
+    <!-- Import AutoCalSol -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-icon">📄</div>
+        <div>
+          <div class="card-title">Import étude AutoCalSol</div>
+          <div class="card-sub">Glissez le PDF AutoCalSol — les données seront extraites automatiquement</div>
+        </div>
+      </div>
+      <div class="drop-zone" id="dropZone"
+        ondragover="handleDragOver(event)"
+        ondragleave="handleDragLeave(event)"
+        ondrop="handleDrop(event)"
+        onclick="document.getElementById('pdfInput').click()">
+        <div class="drop-icon">☁️</div>
+        <div class="drop-title">Glissez votre PDF AutoCalSol ici</div>
+        <div class="drop-sub">ou cliquez pour sélectionner le fichier</div>
+        <span class="drop-btn">Choisir un fichier</span>
+      </div>
+      <input type="file" id="pdfInput" accept=".pdf" style="display:none" onchange="handleFileSelect(event)">
+      <div id="pdfStatus" style="margin-top:0.75rem;font-size:0.82rem;color:var(--gray);display:none;"></div>
+    </div>
+
+    <!-- Données client -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-icon">🏢</div>
+        <div>
+          <div class="card-title">Données client</div>
+          <div class="card-sub">Pré-remplies depuis le PDF — modifiables</div>
+        </div>
+      </div>
+
+      <div class="section-title">Identification</div>
+      <div class="fields-grid">
+        <div class="field-group" style="grid-column: span 2">
+          <label class="field-label">Nom / Raison sociale</label>
+          <input class="field-input" id="clientName" placeholder="Ex: EDWOOD" type="text">
+        </div>
+        <div class="field-group" style="grid-column: span 2">
+          <label class="field-label">Adresse du site</label>
+          <input class="field-input" id="clientAddress" placeholder="Ex: 34 Rue Bernard Ruyant, 59110 La Madeleine" type="text">
+        </div>
+        <div class="field-group">
+          <label class="field-label">Code client</label>
+          <input class="field-input" id="clientCode" placeholder="CU2605-00298" type="text">
+        </div>
+        <div class="field-group">
+          <label class="field-label">N° Proposition</label>
+          <input class="field-input" id="propRef" placeholder="PR2605-0560" type="text">
+        </div>
+        <div class="field-group">
+          <label class="field-label">Date proposition</label>
+          <input class="field-input" id="propDate" type="date">
+        </div>
+        <div class="field-group">
+          <label class="field-label">Date fin validité</label>
+          <input class="field-input" id="propValidity" type="date">
+        </div>
+      </div>
+
+      <div class="section-title">Installation (AutoCalSol)</div>
+      <div class="fields-grid">
+        <div class="field-group">
+          <label class="field-label">Puissance (kWc)</label>
+          <input class="field-input" id="power" placeholder="35" type="number" step="0.1">
+        </div>
+        <div class="field-group">
+          <label class="field-label">Nombre de panneaux</label>
+          <input class="field-input" id="panels" placeholder="70" type="number">
+        </div>
+        <div class="field-group">
+          <label class="field-label">Production étude PR 92% (kWh/an)</label>
+          <input class="field-input" id="prodStudy" placeholder="39510" type="number" oninput="calcProd100()">
+        </div>
+        <div class="field-group">
+          <label class="field-label">Production réelle an 1 — 100% (kWh)</label>
+          <input class="field-input" id="prodReal" placeholder="42946" type="number" style="background:#FFF8E1">
+        </div>
+        <div class="field-group">
+          <label class="field-label">Performance Ratio (%)</label>
+          <input class="field-input" id="prRatio" placeholder="92" type="number" value="92" oninput="calcProd100()">
+        </div>
+        <div class="field-group">
+          <label class="field-label">Consommation site (kWh/an)</label>
+          <input class="field-input" id="consumption" placeholder="66550" type="number">
+        </div>
+        <div class="field-group">
+          <label class="field-label">Taux autoconsommation (%)</label>
+          <input class="field-input" id="autoconsoRate" placeholder="64.8" type="number" step="0.1">
+        </div>
+        <div class="field-group">
+          <label class="field-label">Taux surplus / injection (%)</label>
+          <input class="field-input" id="surplusRate" placeholder="35.2" type="number" step="0.1" oninput="syncRates('surplus')">
+        </div>
+        <div class="field-group">
+          <label class="field-label">Tarif revente surplus (€/kWh)</label>
+          <input class="field-input" id="surplusPrice" placeholder="0.069" type="number" step="0.001">
+        </div>
+        <div class="field-group">
+          <label class="field-label">Surface PV (m²)</label>
+          <input class="field-input" id="pvSurface" placeholder="150" type="number">
+        </div>
+        <div class="field-group">
+          <label class="field-label">Orientation</label>
+          <input class="field-input" id="orientation" placeholder="Sud" type="text">
+        </div>
+        <div class="field-group">
+          <label class="field-label">Inclinaison (°)</label>
+          <input class="field-input" id="inclination" placeholder="30" type="number">
+        </div>
+      </div>
+
+      <div class="section-title">Tarif électricité</div>
+      <div class="fields-grid">
+        <div class="field-group">
+          <label class="field-label">Tarif actuel (€/kWh)</label>
+          <input class="field-input" id="elecPrice" placeholder="0.26" type="number" step="0.01">
+        </div>
+        <div class="field-group">
+          <label class="field-label">Blocage tarifaire (années)</label>
+          <input class="field-input" id="priceLock" placeholder="3" type="number" min="0" max="10" value="0">
+        </div>
+      </div>
+    </div>
+
+    <div class="nav-row">
+      <div></div>
+      <button class="btn btn-primary" onclick="goStep(2)">Étape suivante — Financement →</button>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════
+       SCREEN 2 — FINANCEMENT
+  ══════════════════════════════════════════════ -->
+  <div class="screen" id="screen2">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-icon">💶</div>
+        <div>
+          <div class="card-title">Mode de financement</div>
+          <div class="card-sub">Choisissez entre mensualités ou achat comptant</div>
+        </div>
+      </div>
+
+      <div class="fin-tabs">
+        <div class="fin-tab active" id="tabMensual" onclick="setFinMode('mensual')">📅 Mensualités</div>
+        <div class="fin-tab" id="tabCash" onclick="setFinMode('cash')">💵 Comptant</div>
+      </div>
+
+      <div class="fin-panel active" id="panelMensual">
+        <div class="field-group">
+          <label class="field-label">Mensualité HT (€/mois)</label>
+          <input class="field-input" id="monthly" placeholder="711" type="number" step="0.01">
+        </div>
+        <div class="field-group">
+          <label class="field-label">Durée (mois)</label>
+          <input class="field-input" id="duration" placeholder="84" type="number">
+        </div>
+        <div class="field-group">
+          <label class="field-label">TVA (%)</label>
+          <input class="field-input" id="tva" value="20" type="number">
+        </div>
+        <div class="field-group">
+          <label class="field-label">Total financement HT</label>
+          <input class="field-input" id="monthlyTTC" placeholder="" readonly style="background:#F5FAF5;color:var(--green);font-weight:600">
+        </div>
+      </div>
+
+      <div class="fin-panel" id="panelCash">
+        <div class="field-group">
+          <label class="field-label">Prix comptant HT (€)</label>
+          <input class="field-input" id="cashPrice" placeholder="59780" type="number">
+        </div>
+        <div class="field-group">
+          <label class="field-label">TVA (%)</label>
+          <input class="field-input" id="tvaCash" value="20" type="number">
+        </div>
+        <div class="field-group">
+          <label class="field-label">Total HT</label>
+          <input class="field-input" id="cashTTC" placeholder="" readonly style="background:#F5FAF5;color:var(--green);font-weight:600">
+        </div>
+      </div>
+
+      <!-- Résumé -->
+      <div class="section-title">Résumé financier</div>
+      <div class="kpi-bar" id="finSummary" style="grid-template-columns:repeat(3,1fr)">
+        <div class="kpi-card">
+          <div class="kpi-val" id="sumCapex">—</div>
+          <div class="kpi-lbl">Investissement total</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-val" id="sumMonthly">—</div>
+          <div class="kpi-lbl">Mensualité HT</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-val" id="sumDuration">—</div>
+          <div class="kpi-lbl">Durée financement</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="nav-row">
+      <button class="btn btn-outline" onclick="goStep(1)">← Retour</button>
+      <button class="btn btn-primary" onclick="goStep(3)">Simulation →</button>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════
+       SCREEN 3 — SIMULATION
+  ══════════════════════════════════════════════ -->
+  <div class="screen" id="screen3">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-icon">📊</div>
+        <div>
+          <div class="card-title">Simulation de rentabilité</div>
+          <div class="card-sub">Ajustez les paramètres et choisissez le mode d'affichage</div>
+        </div>
+      </div>
+
+      <!-- Mode toggle -->
+      <div class="sim-header">
+        <div class="mode-toggle">
+          <button class="mode-btn active" id="btnLisse" onclick="setSimMode('lisse')">📈 Lissé 30 ans</button>
+          <button class="mode-btn" id="btnReel" onclick="setSimMode('reel')">📋 Réel an/an</button>
+        </div>
+        <span class="badge badge-green" id="modeLabel">Vue simplifiée</span>
+      </div>
+
+      <!-- Curseurs principaux -->
+      <div class="sliders-row">
+        <div class="slider-group">
+          <div class="slider-header">
+            <span class="slider-label">Tarif électricité (€/kWh)</span>
+            <span class="slider-val" id="lblTarif">0,26</span>
+          </div>
+          <input type="range" id="slTarif" min="0.10" max="0.50" step="0.01" value="0.26" oninput="updateSlider('tarif')">
+        </div>
+        <div class="slider-group">
+          <div class="slider-header">
+            <span class="slider-label">Inflation annuelle (%)</span>
+            <span class="slider-val" id="lblInflation">3,6</span>
+          </div>
+          <input type="range" id="slInflation" min="0" max="10" step="0.1" value="3.6" oninput="updateSlider('inflation')">
+        </div>
+        <div class="slider-group">
+          <div class="slider-header">
+            <span class="slider-label">Mensualité HT (€)</span>
+            <span class="slider-val" id="lblMensual">711</span>
+          </div>
+          <input type="range" id="slMensual" min="100" max="3000" step="1" value="711" oninput="updateSlider('mensual')">
+        </div>
+      </div>
+
+      <!-- Paramètres avancés (mode réel) -->
+      <div class="advanced-toggle" onclick="toggleAdvanced()">
+        <span id="advArrow">▶</span> Paramètres avancés (mode réel)
+      </div>
+      <div class="advanced-panel" id="advancedPanel">
+        <div class="field-group">
+          <label class="field-label">Dégradation panneaux (%/an)</label>
+          <input class="field-input" id="degradation" value="0.4" type="number" step="0.1" oninput="runSim()">
+        </div>
+        <div class="field-group">
+          <label class="field-label">Blocage tarifaire (années)</label>
+          <input class="field-input" id="simPriceLock" value="3" type="number" min="0" max="10" oninput="runSim()">
+        </div>
+        <div class="field-group">
+          <label class="field-label">Inflation à partir de l'an</label>
+          <input class="field-input" id="inflationStart" value="4" type="number" min="1" max="10" oninput="runSim()">
+        </div>
+        <div class="field-group">
+          <label class="field-label">Base production an 1 (kWh)</label>
+          <input class="field-input" id="simProd" value="42946" type="number" oninput="runSim()">
+        </div>
+        <div class="field-group">
+          <label class="field-label">Taux autoconsommation (%)</label>
+          <input class="field-input" id="simAutoconso" value="64.8" type="number" step="0.1" oninput="runSim()">
+        </div>
+        <div class="field-group">
+          <label class="field-label">Tarif revente surplus (€/kWh)</label>
+          <input class="field-input" id="simSurplus" value="0.069" type="number" step="0.001" oninput="runSim()">
+        </div>
+      </div>
+
+      <!-- KPIs -->
+      <div class="kpi-bar">
+        <div class="kpi-card">
+          <div class="kpi-val neg" id="kpiDeficit">—</div>
+          <div class="kpi-lbl">Déficit cumulé max</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-val" id="kpiRetour">—</div>
+          <div class="kpi-lbl">Retour positif cumulé</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-val pos" id="kpiGains30">—</div>
+          <div class="kpi-lbl">Gains nets 30 ans</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-val" id="kpiAn1">—</div>
+          <div class="kpi-lbl">Résultat an 1 (mois)</div>
+        </div>
+      </div>
+
+      <!-- Graphique -->
+      <div class="chart-wrap">
+        <canvas id="simChart"></canvas>
+      </div>
+
+      <!-- Tableau -->
+      <div class="sim-table-wrap">
+        <table id="simTable">
+          <thead id="simThead"></thead>
+          <tbody id="simTbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="nav-row">
+      <button class="btn btn-outline" onclick="goStep(2)">← Retour</button>
+      <button class="btn btn-primary" onclick="goStep(4)">Générer les documents →</button>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════
+       SCREEN 4 — GÉNÉRATION DOCUMENTS
+  ══════════════════════════════════════════════ -->
+  <div class="screen" id="screen4">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-icon">📦</div>
+        <div>
+          <div class="card-title">Génération des documents</div>
+          <div class="card-sub">Mode retenu : <span id="retainedMode" class="badge badge-green">—</span></div>
+        </div>
+      </div>
+
+      <!-- Récap projet -->
+      <div class="section-title">Récapitulatif du projet</div>
+      <div class="kpi-bar" id="recapBar">
+        <div class="kpi-card"><div class="kpi-val" id="recapPower">—</div><div class="kpi-lbl">Puissance</div></div>
+        <div class="kpi-card"><div class="kpi-val" id="recapProd">—</div><div class="kpi-lbl">Production an 1</div></div>
+        <div class="kpi-card"><div class="kpi-val" id="recapGains">—</div><div class="kpi-lbl">Gains 30 ans</div></div>
+        <div class="kpi-card"><div class="kpi-val" id="recapMonthly">—</div><div class="kpi-lbl">Mensualité HT</div></div>
+      </div>
+
+      <!-- Observation proposition -->
+      <div class="section-title">Observations (proposition commerciale)</div>
+      <div class="field-group" style="margin-bottom:1.5rem">
+        <label class="field-label">Texte libre — apparaîtra dans la proposition PDF</label>
+        <textarea class="field-input" id="observations" rows="5"
+          placeholder="Ex: Ce devis inclut la fourniture, l'installation et la mise en service de l'installation photovoltaïque. Tarif mensuel sur 84 mensualités, maintenance incluse..."></textarea>
+      </div>
+
+      <!-- Boutons génération -->
+      <div class="gen-grid">
+        <div class="gen-card">
+          <div class="gen-icon">📊</div>
+          <div class="gen-title">Présentation</div>
+          <div class="gen-sub">Fichier PowerPoint avec étude économique et graphiques</div>
+          <button class="btn btn-primary btn-full" onclick="generatePPTX()" id="btnPPTX">
+            <span class="spinner" id="spinPPTX"></span>
+            Générer PPTX
+          </button>
+        </div>
+        <div class="gen-card">
+          <div class="gen-icon">📄</div>
+          <div class="gen-title">Contrat</div>
+          <div class="gen-sub">Document Word avec articles, annexes et tableau 30 ans</div>
+          <button class="btn btn-gold btn-full" onclick="generateDOCX()" id="btnDOCX">
+            <span class="spinner" id="spinDOCX"></span>
+            Générer DOCX
+          </button>
+        </div>
+        <div class="gen-card">
+          <div class="gen-icon">🧾</div>
+          <div class="gen-title">Proposition</div>
+          <div class="gen-sub">Devis PDF format Arnaud Energies avec signature</div>
+          <button class="btn btn-outline btn-full" onclick="generatePDF()" id="btnPDF">
+            <span class="spinner" id="spinPDF"></span>
+            Générer PDF
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="nav-row">
+      <button class="btn btn-outline" onclick="goStep(3)">← Retour simulation</button>
+      <button class="btn btn-primary" onclick="generateAll()">⬇ Tout télécharger</button>
+    </div>
+  </div>
+
+</main>
+
+<div class="toast" id="toast"></div>
+
+<!-- ══════════════════════════════════════════════
+     JAVASCRIPT
+══════════════════════════════════════════════ -->
+<script>
+// ─── PDF.js worker ───────────────────────────────────────────────────────────
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+// ─── STATE ───────────────────────────────────────────────────────────────────
+let currentStep = 1;
+let simMode = 'lisse';
+let finMode = 'mensual';
+let simData = [];
+let chart = null;
+
+// ─── NAVIGATION ──────────────────────────────────────────────────────────────
+function goStep(n) {
+  if (n === currentStep) return;
+  document.getElementById('screen' + currentStep).classList.remove('active');
+  document.getElementById('screen' + n).classList.add('active');
+  ['dot1','dot2','dot3','dot4'].forEach((id, i) => {
+    const dot = document.getElementById(id);
+    dot.className = 'step-dot';
+    if (i + 1 < n) dot.classList.add('done');
+    else if (i + 1 === n) dot.classList.add('active');
+  });
+  document.getElementById('progressFill').style.width = (n * 25) + '%';
+  currentStep = n;
+  if (n === 2) updateFinSummary();
+  if (n === 3) { syncAdvancedFromStep1(); runSim(); }
+  if (n === 4) updateRecap();
+  window.scrollTo(0, 0);
+}
+
+// ─── DRAG & DROP ─────────────────────────────────────────────────────────────
+function handleDragOver(e) {
+  e.preventDefault();
+  document.getElementById('dropZone').classList.add('dragging');
+}
+function handleDragLeave(e) {
+  document.getElementById('dropZone').classList.remove('dragging');
+}
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('dropZone').classList.remove('dragging');
+  const file = e.dataTransfer.files[0];
+  if (file && file.type === 'application/pdf') parsePDF(file);
+  else showToast('⚠️ Veuillez déposer un fichier PDF');
+}
+function handleFileSelect(e) {
+  const file = e.target.files[0];
+  if (file) parsePDF(file);
+}
+
+// ─── PDF PARSING ─────────────────────────────────────────────────────────────
+async function parsePDF(file) {
+  const status = document.getElementById('pdfStatus');
+  status.style.display = 'block';
+  status.innerHTML = '⏳ Lecture du PDF en cours...';
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    let fullText = '';
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      fullText += content.items.map(s => s.str).join(' ') + '\n';
+    }
+    extractAutoCalSol(fullText);
+    status.innerHTML = '✅ PDF extrait avec succès — ' + pdf.numPages + ' page(s) analysée(s)';
+    status.style.color = 'var(--green)';
+    showToast('✅ Données AutoCalSol extraites');
+  } catch(err) {
+    status.innerHTML = '❌ Erreur de lecture PDF — vérifiez le fichier';
+    status.style.color = 'var(--red)';
+    console.error(err);
+  }
+}
+
+function extractAutoCalSol(text) {
+  const set = (id, val) => {
+    if (val !== null && val !== undefined && String(val).trim() !== '') {
+      const el = document.getElementById(id);
+      if (el) { el.value = val; el.classList.add('extracted'); }
+    }
+  };
+
+  // Nom client — cherche le nom en majuscules après patterns courants
+  const nameMatch = text.match(/(?:Client|Rapport généré sur AutoCalsol|EDWOOD|pour\s+)[\s\S]{0,20}?\n([A-Z][A-Z\s&]{3,40})\n/);
+  if (nameMatch) set('clientName', nameMatch[1].trim());
+
+  // Adresse
+  const addrMatch = text.match(/(\d+\s+(?:Rue|Avenue|Boulevard|Allée|Chemin|Impasse)[^\n]{5,60}(?:\d{5})[^\n]{0,40})/i);
+  if (addrMatch) set('clientAddress', addrMatch[1].trim());
+
+  // Puissance kWc
+  const powMatch = text.match(/(\d+[.,]?\d*)\s*kWc/i);
+  if (powMatch) set('power', powMatch[1].replace(',', '.'));
+
+  // Production annuelle kWh ou MWh
+  const prodMWh = text.match(/(\d+[.,]\d+)\s*MWh[\s\S]{0,30}?(?:produits|production|annuelle)/i);
+  const prodKWh = text.match(/Production[\s\S]{0,30}?(\d[\d\s]{2,6})\s*kWh/i);
+  if (prodMWh) {
+    const val = parseFloat(prodMWh[1].replace(',', '.')) * 1000;
+    set('prodStudy', Math.round(val));
+    calcProd100();
+  } else if (prodKWh) {
+    set('prodStudy', prodKWh[1].replace(/\s/g, ''));
+    calcProd100();
+  }
+
+  // Consommation
+  const consoMWh = text.match(/(\d+[.,]\d+)\s*MWh[\s\S]{0,30}?(?:consomm|annuelle)/i);
+  const consoKWh = text.match(/Consommation[\s\S]{0,30}?(\d[\d\s]{2,6})\s*kWh/i);
+  if (consoMWh) set('consumption', Math.round(parseFloat(consoMWh[1].replace(',','.')) * 1000));
+  else if (consoKWh) set('consumption', consoKWh[1].replace(/\s/g,''));
+
+  // Taux autoconsommation
+  const acMatch = text.match(/(\d+[.,]\d+)\s*%[\s\S]{0,20}?(?:autoconsomm|Consommés sur)/i);
+  if (acMatch) { set('autoconsoRate', acMatch[1].replace(',','.')); syncRates('auto'); }
+
+  // Tarif réseau
+  const tarifMatch = text.match(/(\d+[.,]\d+)\s*c?€\/kWh[\s\S]{0,20}?(?:soutiré|réseau|tarif)/i);
+  if (tarifMatch) {
+    let val = parseFloat(tarifMatch[1].replace(',','.'));
+    if (val > 1) val = val / 100; // centimes → euros
+    set('elecPrice', val.toFixed(2));
+  }
+
+  // Tarif revente
+  const reventeMatch = text.match(/(\d+[.,]\d+)\s*c?€\/kWh[\s\S]{0,30}?(?:inject|revent|surplus|achat)/i);
+  if (reventeMatch) {
+    let val = parseFloat(reventeMatch[1].replace(',','.'));
+    if (val > 1) val = val / 100;
+    set('surplusPrice', val.toFixed(4));
+  }
+
+  // Capex
+  const capexMatch = text.match(/(\d[\d\s]{3,6})\s*€[\s\S]{0,20}?(?:Investissement|CAPEX)/i);
+  if (capexMatch) set('cashPrice', capexMatch[1].replace(/\s/g,''));
+
+  // Date
+  const dateMatch = text.match(/Le\s+(\d{2})\/(\d{2})\/(\d{4})/);
+  if (dateMatch) {
+    const d = `${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]}`;
+    set('propDate', d);
+    // validité +15 jours
+    const dt = new Date(d); dt.setDate(dt.getDate() + 15);
+    set('propValidity', dt.toISOString().split('T')[0]);
+  }
+}
+
+// ─── CALCULS PRODUCTION ──────────────────────────────────────────────────────
+function calcProd100() {
+  const study = parseFloat(document.getElementById('prodStudy').value);
+  const pr = parseFloat(document.getElementById('prRatio').value) || 92;
+  if (study && pr) {
+    const real = Math.round(study / (pr / 100));
+    document.getElementById('prodReal').value = real;
+    document.getElementById('prodReal').classList.add('extracted');
+    document.getElementById('simProd').value = real;
+  }
+}
+
+function syncRates(from) {
+  if (from === 'auto') {
+    const a = parseFloat(document.getElementById('autoconsoRate').value) || 0;
+    document.getElementById('surplusRate').value = Math.round((100 - a) * 10) / 10;
+  } else {
+    const s = parseFloat(document.getElementById('surplusRate').value) || 0;
+    document.getElementById('autoconsoRate').value = Math.round((100 - s) * 10) / 10;
+  }
+}
+
+// ─── FINANCEMENT ─────────────────────────────────────────────────────────────
+function setFinMode(mode) {
+  finMode = mode;
+  document.getElementById('tabMensual').className = 'fin-tab' + (mode === 'mensual' ? ' active' : '');
+  document.getElementById('tabCash').className = 'fin-tab' + (mode === 'cash' ? ' active' : '');
+  document.getElementById('panelMensual').className = 'fin-panel' + (mode === 'mensual' ? ' active' : '');
+  document.getElementById('panelCash').className = 'fin-panel' + (mode === 'cash' ? ' active' : '');
+  updateFinSummary();
+}
+
+document.addEventListener('input', function(e) {
+  if (['monthly','duration','tva','cashPrice','tvaCash'].includes(e.target.id)) updateFinSummary();
+});
+
+function updateFinSummary() {
+  if (finMode === 'mensual') {
+    const m = parseFloat(document.getElementById('monthly').value) || 0;
+    const d = parseInt(document.getElementById('duration').value) || 0;
+    const t = parseFloat(document.getElementById('tva').value) || 20;
+    const ttc = m * (1 + t/100);
+    document.getElementById('monthlyTTC').value = (m * d).toFixed(2) + ' € HT total';
+    document.getElementById('sumCapex').textContent = fmt(m * d) + ' € HT';
+    document.getElementById('sumMonthly').textContent = m.toFixed(2) + ' € HT';
+    document.getElementById('sumDuration').textContent = d + ' mois';
+    // sync slider
+    document.getElementById('slMensual').value = m;
+    document.getElementById('lblMensual').textContent = m.toFixed(0);
+  } else {
+    const p = parseFloat(document.getElementById('cashPrice').value) || 0;
+    const t = parseFloat(document.getElementById('tvaCash').value) || 20;
+    document.getElementById('cashTTC').value = p.toFixed(2) + ' € HT';
+    document.getElementById('sumCapex').textContent = fmt(p) + ' € HT';
+    document.getElementById('sumMonthly').textContent = 'Comptant';
+    document.getElementById('sumDuration').textContent = '—';
+  }
+}
+
+// ─── SIMULATION ──────────────────────────────────────────────────────────────
+function setSimMode(mode) {
+  simMode = mode;
+  document.getElementById('btnLisse').className = 'mode-btn' + (mode === 'lisse' ? ' active' : '');
+  document.getElementById('btnReel').className = 'mode-btn' + (mode === 'reel' ? ' active' : '');
+  document.getElementById('modeLabel').textContent = mode === 'lisse' ? 'Vue simplifiée' : 'Vue réelle an/an';
+  document.getElementById('modeLabel').className = 'badge ' + (mode === 'lisse' ? 'badge-gold' : 'badge-green');
+  runSim();
+}
+
+function toggleAdvanced() {
+  const panel = document.getElementById('advancedPanel');
+  const arrow = document.getElementById('advArrow');
+  const isOpen = panel.classList.contains('open');
+  panel.classList.toggle('open');
+  arrow.textContent = isOpen ? '▶' : '▼';
+}
+
+function updateSlider(type) {
+  if (type === 'tarif') {
+    const v = parseFloat(document.getElementById('slTarif').value);
+    document.getElementById('lblTarif').textContent = v.toFixed(2).replace('.', ',');
+    document.getElementById('elecPrice').value = v;
+  } else if (type === 'inflation') {
+    const v = parseFloat(document.getElementById('slInflation').value);
+    document.getElementById('lblInflation').textContent = v.toFixed(1).replace('.', ',');
+  } else if (type === 'mensual') {
+    const v = parseFloat(document.getElementById('slMensual').value);
+    document.getElementById('lblMensual').textContent = v.toFixed(0);
+    document.getElementById('monthly').value = v;
+  }
+  runSim();
+}
+
+function syncAdvancedFromStep1() {
+  const prodReal = document.getElementById('prodReal').value;
+  const ac = document.getElementById('autoconsoRate').value;
+  const sp = document.getElementById('surplusPrice').value;
+  const lock = document.getElementById('priceLock').value;
+  const tarif = document.getElementById('elecPrice').value;
+  if (prodReal) document.getElementById('simProd').value = prodReal;
+  if (ac) document.getElementById('simAutoconso').value = ac;
+  if (sp) document.getElementById('simSurplus').value = sp;
+  if (lock) document.getElementById('simPriceLock').value = lock;
+  if (tarif) {
+    document.getElementById('slTarif').value = tarif;
+    document.getElementById('lblTarif').textContent = parseFloat(tarif).toFixed(2).replace('.', ',');
+  }
+  const m = finMode === 'mensual' ? parseFloat(document.getElementById('monthly').value) : 0;
+  if (m) {
+    document.getElementById('slMensual').value = m;
+    document.getElementById('lblMensual').textContent = m.toFixed(0);
+  }
+}
+
+function runSim() {
+  const tarif0 = parseFloat(document.getElementById('slTarif').value) || 0.26;
+  const inflation = parseFloat(document.getElementById('slInflation').value) / 100;
+  const monthly = parseFloat(document.getElementById('slMensual').value) || 0;
+  const duration = parseInt(document.getElementById('duration').value) || 0;
+  const finYears = Math.ceil(duration / 12);
+  const annualFin = monthly * 12;
+
+  const prod0 = parseFloat(document.getElementById('simProd').value) || 42946;
+  const degradation = parseFloat(document.getElementById('degradation').value) / 100;
+  const priceLock = parseInt(document.getElementById('simPriceLock').value) || 0;
+  const inflStart = parseInt(document.getElementById('inflationStart').value) || 4;
+  const acRate = parseFloat(document.getElementById('simAutoconso').value) / 100;
+  const surplusRate = 1 - acRate;
+  const surplusPrice = parseFloat(document.getElementById('simSurplus').value) || 0.069;
+
+  simData = [];
+
+  if (simMode === 'lisse') {
+    // Mode lissé : économie moyenne annuelle sur 30 ans, production constante, tarif moyen
+    const avgTarif = tarif0 * (1 + (1 + inflation) ** 30) / 2; // simplification
+    const avgProd = prod0 * (1 - degradation * 15); // milieu de vie
+    const avgRev = avgProd * acRate * tarif0 + avgProd * surplusRate * surplusPrice;
+
+    let cum = 0;
+    for (let y = 1; y <= 30; y++) {
+      const fin = y <= finYears ? annualFin : 0;
+      // Dans le lissé on utilise le tarif what-if constant
+      const rev = Math.round(prod0 * acRate * tarif0 + prod0 * surplusRate * surplusPrice);
+      const net = rev - fin;
+      cum += net;
+      simData.push({ y, prod: prod0, tarif: tarif0, rev, fin, net, cum });
+    }
+  } else {
+    // Mode réel année par année
+    let cum = 0;
+    for (let y = 1; y <= 30; y++) {
+      const prod = Math.round(prod0 * (1 - degradation) ** (y - 1));
+      let tarif;
+      if (y <= priceLock) {
+        tarif = tarif0;
+      } else {
+        const yearsInflated = y - Math.max(priceLock, inflStart - 1);
+        tarif = yearsInflated > 0 ? tarif0 * (1 + inflation) ** yearsInflated : tarif0;
+      }
+      const rev = Math.round(prod * acRate * tarif + prod * surplusRate * surplusPrice);
+      const fin = y <= finYears ? annualFin : 0;
+      const net = rev - fin;
+      cum += net;
+      simData.push({ y, prod, tarif: Math.round(tarif * 1000) / 1000, rev, fin, net, cum });
+    }
+  }
+
+  updateKPIs();
+  renderTable();
+  renderChart();
+}
+
+function updateKPIs() {
+  const minCum = Math.min(...simData.map(d => d.cum));
+  const retour = simData.find(d => d.cum >= 0);
+  const gains30 = simData[29].cum;
+  const an1 = simData[0].net;
+
+  const kpiDef = document.getElementById('kpiDeficit');
+  kpiDef.textContent = minCum < 0 ? fmtSign(minCum) + ' €' : '0 €';
+  kpiDef.className = 'kpi-val ' + (minCum < 0 ? 'neg' : 'pos');
+
+  document.getElementById('kpiRetour').textContent = retour ? 'An ' + retour.y : '> 30 ans';
+  document.getElementById('kpiGains30').textContent = fmtSign(gains30) + ' €';
+  document.getElementById('kpiAn1').textContent = (an1 / 12 >= 0 ? '+' : '') + Math.round(an1 / 12) + ' €/mois';
+}
+
+function renderTable() {
+  const thead = document.getElementById('simThead');
+  const tbody = document.getElementById('simTbody');
+
+  if (simMode === 'lisse') {
+    thead.innerHTML = `<tr>
+      <th>An</th><th>Revenus bruts</th><th>Financement</th><th>Gain net</th><th>Cumulé</th>
+    </tr>`;
+    tbody.innerHTML = simData.map(d => {
+      const cumCls = d.cum < 0 ? 'cum-neg' : 'cum-pos';
+      const netCls = d.net < 0 ? 'td-neg' : d.net === 0 ? 'td-zero' : 'td-pos';
+      const cumValCls = d.cum < 0 ? 'td-neg' : 'td-pos';
+      return `<tr class="${cumCls}">
+        <td>${d.y}</td>
+        <td>${fmt(d.rev)} €</td>
+        <td>${d.fin > 0 ? fmt(d.fin) + ' €' : '—'}</td>
+        <td class="${netCls}">${fmtSign(d.net)} €</td>
+        <td class="${cumValCls}">${fmtSign(d.cum)} €</td>
+      </tr>`;
+    }).join('');
+  } else {
+    thead.innerHTML = `<tr>
+      <th>An</th><th>Production (kWh)</th><th>Tarif (€/kWh)</th><th>Revenus bruts</th><th>Financement</th><th>Gain net</th><th>Cumulé</th>
+    </tr>`;
+    tbody.innerHTML = simData.map(d => {
+      const cumCls = d.cum < 0 ? 'cum-neg' : 'cum-pos';
+      const netCls = d.net < 0 ? 'td-neg' : d.net === 0 ? 'td-zero' : 'td-pos';
+      const cumValCls = d.cum < 0 ? 'td-neg' : 'td-pos';
+      return `<tr class="${cumCls}">
+        <td>${d.y}</td>
+        <td>${d.prod.toLocaleString('fr-FR')}</td>
+        <td>${d.tarif.toFixed(3)}</td>
+        <td>${fmt(d.rev)} €</td>
+        <td>${d.fin > 0 ? fmt(d.fin) + ' €' : '—'}</td>
+        <td class="${netCls}">${fmtSign(d.net)} €</td>
+        <td class="${cumValCls}">${fmtSign(d.cum)} €</td>
+      </tr>`;
+    }).join('');
+  }
+}
+
+function renderChart() {
+  const ctx = document.getElementById('simChart').getContext('2d');
+  if (chart) chart.destroy();
+
+  const labels = simData.map(d => 'An ' + d.y);
+  const netData = simData.map(d => d.net);
+  const cumData = simData.map(d => d.cum);
+
+  chart = new Chart(ctx, {
+    data: {
+      labels,
+      datasets: [
+        {
+          type: 'bar',
+          label: 'Gain net annuel',
+          data: netData,
+          backgroundColor: netData.map(v => v < 0 ? 'rgba(198,40,40,0.5)' : 'rgba(76,175,80,0.5)'),
+          borderColor: netData.map(v => v < 0 ? '#C62828' : '#2E7D32'),
+          borderWidth: 1,
+          yAxisID: 'y',
+        },
+        {
+          type: 'line',
+          label: 'Cumulé',
+          data: cumData,
+          borderColor: '#F9A825',
+          backgroundColor: 'rgba(249,168,37,0.1)',
+          borderWidth: 2.5,
+          pointRadius: 2,
+          tension: 0.3,
+          yAxisID: 'y1',
+          fill: false,
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'top', labels: { font: { family: 'DM Sans' }, color: '#607D6B' } },
+        tooltip: {
+          callbacks: {
+            label: ctx => ctx.dataset.label + ' : ' + fmtSign(ctx.raw) + ' €'
+          }
+        }
+      },
+      scales: {
+        y: { position: 'left', grid: { color: '#EEF0EE' }, ticks: { callback: v => (v/1000)+'k €', color: '#607D6B' } },
+        y1: { position: 'right', grid: { drawOnChartArea: false }, ticks: { callback: v => (v/1000)+'k €', color: '#F9A825' } },
+        x: { grid: { display: false }, ticks: { maxRotation: 45, color: '#607D6B', font: { size: 10 } } }
+      }
+    }
+  });
+}
+
+// ─── RECAP STEP 4 ────────────────────────────────────────────────────────────
+function updateRecap() {
+  document.getElementById('retainedMode').textContent = simMode === 'lisse' ? 'Lissé 30 ans' : 'Réel an/an';
+  document.getElementById('recapPower').textContent = (document.getElementById('power').value || '—') + ' kWc';
+  document.getElementById('recapProd').textContent = fmt(parseInt(document.getElementById('prodReal').value) || 0) + ' kWh';
+  document.getElementById('recapGains').textContent = simData.length ? fmtSign(simData[29].cum) + ' €' : '—';
+  const m = finMode === 'mensual' ? document.getElementById('monthly').value : 'Comptant';
+  document.getElementById('recapMonthly').textContent = m ? (m + (finMode === 'mensual' ? ' € HT' : '')) : '—';
+}
+
+// ─── GÉNÉRATION PDF PROPOSITION ──────────────────────────────────────────────
+function generatePDF() {
+  const spin = document.getElementById('spinPDF');
+  spin.classList.add('show');
+
+  setTimeout(() => {
+    try {
+      const d = getData();
+      const obs = document.getElementById('observations').value || '';
+
+      // Numéro de proposition auto
+      const today = new Date();
+      const propRef = d.propRef || ('PR' + String(today.getFullYear()).slice(2) + String(today.getMonth()+1).padStart(2,'0') + '-XXXX');
+      const dateStr = formatDate(today);
+      const validStr = formatDate(new Date(today.getTime() + 15*86400000));
+
+      // Texte désignation
+      const isPanneaux = parseInt(d.panels);
+      const designLines = [
+        { text: 'Lieu de livraison : ', style: 'bold', cont: 'Identique à l\'adresse de facturation' },
+        { text: 'Délai de livraison : ', style: 'normal', cont: '90 jours sauf accord contraire des parties.' },
+        { text: '', style: 'space' },
+        { text: 'Attestation d\'assurance décennale obligatoire et de responsabilité civile professionnelle : ', style: 'normal', cont: 'Un contrat d\'assurance n°037.0012525.S179337' },
+        { text: '', style: 'space' },
+        { text: 'Puissance : ' + d.power + ' kWc', style: 'bold' },
+        { text: 'Nombre de panneaux : ' + d.panels, style: 'bold' },
+        { text: '', style: 'space' },
+        { text: 'Marque : Francilienne ENERGY - Réf : MONO 500 W', style: 'normal' },
+        { text: 'Panneaux photovoltaïques monocristallin Full Black 500 Wc 132 DEMI-CELLULES PERC', style: 'normal' },
+        { text: 'Dimension cadre (mm) : L 2094 x l 1134 x E 35', style: 'normal' },
+        { text: 'Garantie 30 ans', style: 'bold' },
+        { text: '', style: 'space' },
+        { text: 'Marque : Huawei - Réf : SUN2000', style: 'normal' },
+        { text: 'Onduleurs triphasé : Smart Energy controller AC et DC', style: 'normal' },
+        { text: 'Garantie 10 ans', style: 'bold' },
+        { text: '', style: 'space' },
+        { text: 'Système de pilotage', style: 'bold' },
+        { text: '', style: 'space' },
+        { text: 'Huawei Smart Power Sensor : Unité de mesure et de supervision énergétique permettant d\'optimiser l\'autoconsommation grâce au suivi en temps réel des flux électriques (consommation, production, injection réseau) directement au tableau de votre installation en mode rail DIN', style: 'normal' },
+        { text: '', style: 'space' },
+        { text: 'Application dédiée FusionSolar permettant d\'optimiser les performances, suivre les données en temps réel et piloter efficacement votre installation.', style: 'normal' },
+        { text: '', style: 'space' },
+        { text: 'Démarches incluses au projet :', style: 'normal' },
+        { text: '- Obtention de la déclaration préalable de travaux auprès des services d\'urbanisme.', style: 'normal' },
+        { text: '- Obtention d\'un contrat de revente du surplus et visite technique.', style: 'normal' },
+        { text: '- Demande au tiers financeur.', style: 'normal' },
+        { text: '', style: 'space' },
+        { text: 'Raccordement :', style: 'normal' },
+        { text: '- Raccordement au tableau électrique dans le cadre de l\'autoconsommation.', style: 'normal' },
+        { text: '- Raccordement au réseau pour la revente de surplus à hauteur de 1 500 euros.', style: 'normal' },
+      ];
+      if (obs) {
+        designLines.push({ text: '', style: 'space' });
+        designLines.push({ text: 'Observations :', style: 'bold' });
+        designLines.push({ text: obs, style: 'normal' });
+      }
+
+      const htVal = finMode === 'mensual'
+        ? parseFloat(d.monthly).toFixed(2)
+        : parseFloat(d.cashPrice).toFixed(2);
+      const tvaVal = finMode === 'mensual'
+        ? (parseFloat(d.monthly) * 0.20).toFixed(2)
+        : (parseFloat(d.cashPrice) * 0.20).toFixed(2);
+      const ttcVal = finMode === 'mensual'
+        ? (parseFloat(d.monthly) * 1.20).toFixed(2)
+        : (parseFloat(d.cashPrice) * 1.20).toFixed(2);
+      const durationLabel = finMode === 'mensual'
+        ? 'Tarif mensuel sur ' + d.duration + ' mensualités'
+        : 'Prix comptant — fourniture, installation et mise en service.';
+
+      const condGenText = [
+        'Le présent devis devient caduc dans le cas de la non réalisation d\'un des éléments suivants : obtention de l\'accord du tiers financeur (le client s\'engage à transmettre les éléments demandés). Obtention de l\'autorisation préalable de travaux. Faisabilité technique n\'entraînant pas de coûts excessifs à la réalisation de l\'installation. Obtention de l\'autorisation auprès du gestionnaire de réseau.',
+        '',
+        'Pour l\'annulation des dossiers, merci de vous référer aux conditions générales de ventes présentes sur notre site internet www.arnaudenergies.fr.',
+        '',
+        'En cas d\'annulation malgré l\'obtention de l\'accord administratif, technique et financier, il faut se référer aux conditions générales de vente disponibles sur le site de Arnaud Energies.',
+        '',
+        'En cas de litige afférent à la commande ou ses suites, les parties doivent d\'abord tenter de résoudre amiablement leur différend entre elles.',
+        '',
+        'A défaut d\'accord amiable dans un délai de 6 semaines, le client pourra gratuitement soumettre son litige au service de médiation "Médiation de la consommation patrimoine", dont Arnaud Energies relève, soit en ligne sur http://mcpmediation.org soit par voie postale - Médiation de la consommation et Patrimoine, 12 square Desnouettes, 75015 Paris.',
+      ].join('\n');
+
+      const docDef = {
+        pageSize: 'A4',
+        pageMargins: [40, 40, 40, 60],
+        defaultStyle: { font: 'Roboto', fontSize: 9, color: '#1A1A1A' },
+        footer: (currentPage, pageCount) => ({
+          columns: [
+            { text: 'Société par actions simplifiée unipersonnelle (SASU) - Capital de 30 000 € - SIRET: 89999433900013\nNAF-APE: 4322B - RCS/RM: 899 994 339 R.C.S. Paris - Numéro TVA: FR57899994339', fontSize: 7, color: '#888', margin: [40, 0, 40, 0] },
+            { text: currentPage + ' / ' + pageCount, alignment: 'right', fontSize: 7, color: '#888', margin: [0, 0, 40, 0] }
+          ],
+          margin: [40, 10, 40, 0]
+        }),
+        content: [
+          // En-tête
+          {
+            columns: [
+              {
+                stack: [
+                  { text: 'Arnaud\nEnergies', fontSize: 22, bold: true, color: '#1E5C2E', lineHeight: 1.1 },
+                  { text: 'ENR - SOLAIRE ☀', fontSize: 8, color: '#4CAF50', margin: [0, 2, 0, 0] }
+                ],
+                width: 120
+              },
+              { width: '*', text: '' },
+              {
+                stack: [
+                  { text: 'Proposition ' + propRef, fontSize: 14, bold: true, color: '#1A1A1A', alignment: 'right' },
+                  { text: 'Date : ' + dateStr, fontSize: 9, alignment: 'right', margin: [0, 2, 0, 0] },
+                  { text: 'Date de fin de validité : ' + validStr, fontSize: 9, alignment: 'right' },
+                  { text: 'Code client : ' + (d.clientCode || ''), fontSize: 9, alignment: 'right' },
+                ]
+              }
+            ],
+            margin: [0, 0, 0, 16]
+          },
+          // Émetteur / Adressé à
+          {
+            columns: [
+              {
+                width: '50%',
+                stack: [
+                  { text: 'Émetteur', fontSize: 8, color: '#888' },
+                  {
+                    table: {
+                      widths: ['*'],
+                      body: [[{
+                        stack: [
+                          { text: 'Arnaud Energies', bold: true, fontSize: 9 },
+                          { text: '54-56, 54 AVENUE HOCHE', fontSize: 8.5 },
+                          { text: '75008 Paris', fontSize: 8.5 },
+                          { text: 'France', fontSize: 8.5 },
+                          { text: '', margin: [0,4,0,0] },
+                          { text: 'Tél.: 0189706365', fontSize: 8.5 },
+                          { text: 'Email: contact@arnaudenergies.fr', fontSize: 8.5 },
+                          { text: 'Web: https://arnaudenergies.fr/', fontSize: 8.5 },
+                        ],
+                        margin: [6, 6, 6, 6]
+                      }]]
+                    },
+                    layout: { hLineColor: () => '#CCCCCC', vLineColor: () => '#CCCCCC' }
+                  }
+                ]
+              },
+              { width: 20, text: '' },
+              {
+                width: '*',
+                stack: [
+                  { text: 'Adressé à', fontSize: 8, color: '#888' },
+                  {
+                    table: {
+                      widths: ['*'],
+                      body: [[{
+                        stack: [
+                          { text: d.clientName || '', bold: true, fontSize: 9 },
+                          { text: d.clientAddress || '', fontSize: 8.5 },
+                        ],
+                        margin: [6, 8, 6, 30]
+                      }]]
+                    },
+                    layout: { hLineColor: () => '#CCCCCC', vLineColor: () => '#CCCCCC' }
+                  }
+                ]
+              }
+            ],
+            margin: [0, 0, 0, 12]
+          },
+          // Tableau désignation
+          {
+            table: {
+              widths: ['*', 40, 50, 30, 55],
+              headerRows: 1,
+              body: [
+                [
+                  { text: 'Désignation', fontSize: 8.5 },
+                  { text: 'TVA', fontSize: 8.5, alignment: 'center' },
+                  { text: 'P.U. HT', fontSize: 8.5, alignment: 'right' },
+                  { text: 'Qté', fontSize: 8.5, alignment: 'center' },
+                  { text: 'Total HT', fontSize: 8.5, alignment: 'right' },
+                ],
+                [
+                  {
+                    stack: designLines.filter(l => l.text !== '').map(l => ({
+                      text: l.text + (l.cont ? l.cont : ''),
+                      bold: l.style === 'bold',
+                      fontSize: 8.5,
+                      margin: [0, 1, 0, 1]
+                    })).concat([
+                      { text: '', margin: [0, 4, 0, 0] },
+                      { text: 'Fourniture, installation et mise en service.', bold: true, fontSize: 8.5 },
+                      { text: '', margin: [0, 6, 0, 0] },
+                      { text: durationLabel, bold: true, fontSize: 8.5 },
+                      { text: condGenText, fontSize: 7.5, color: '#444', margin: [0, 12, 0, 0] },
+                    ]),
+                    margin: [2, 4, 2, 4]
+                  },
+                  { text: '20%', alignment: 'center', fontSize: 8.5 },
+                  { text: htVal, alignment: 'right', fontSize: 8.5 },
+                  { text: '1', alignment: 'center', fontSize: 8.5 },
+                  { text: htVal, alignment: 'right', fontSize: 8.5 },
+                ]
+              ]
+            },
+            layout: { hLineColor: () => '#CCCCCC', vLineColor: () => '#CCCCCC', hLineWidth: () => 0.5, vLineWidth: () => 0.5 }
+          },
+          // Totaux
+          {
+            margin: [0, 8, 0, 8],
+            columns: [
+              { width: '*', text: '' },
+              {
+                width: 180,
+                table: {
+                  widths: ['*', 70],
+                  body: [
+                    [{ text: 'Total HT', fontSize: 8.5 }, { text: htVal + ' €', alignment: 'right', fontSize: 8.5 }],
+                    [{ text: 'Total TVA 20%', fontSize: 8.5 }, { text: tvaVal + ' €', alignment: 'right', fontSize: 8.5 }],
+                    [{ text: 'Total TTC', bold: true, fontSize: 9 }, { text: ttcVal + ' €', bold: true, alignment: 'right', fontSize: 9 }],
+                  ]
+                },
+                layout: { hLineColor: () => '#CCCCCC', vLineColor: () => '#CCCCCC', hLineWidth: () => 0.5, vLineWidth: () => 0.5 }
+              }
+            ]
+          },
+          // Signature
+          {
+            table: {
+              widths: ['*'],
+              body: [[{
+                text: 'Cachet, Date, Signature et mention "Bon pour Accord"',
+                fontSize: 8.5, margin: [4, 4, 4, 40]
+              }]]
+            },
+            layout: { hLineColor: () => '#CCCCCC', vLineColor: () => '#CCCCCC', hLineWidth: () => 0.5, vLineWidth: () => 0.5 }
+          }
+        ]
+      };
+
+      pdfMake.createPdf(docDef).download('Proposition_' + propRef + '_' + (d.clientName || 'client').replace(/\s+/g,'_') + '.pdf');
+      showToast('✅ Proposition PDF générée');
+    } catch(err) {
+      console.error(err);
+      showToast('❌ Erreur génération PDF : ' + err.message);
+    }
+    spin.classList.remove('show');
+  }, 100);
+}
+
+// ─── GÉNÉRATION PPTX ─────────────────────────────────────────────────────────
+function generatePPTX() {
+  showToast('📊 La génération PPTX nécessite Node.js — utilisez l\'outil de bureau');
+  // Pour une app web pure, on utilise l'API Claude pour générer le PPTX
+  // Dans ce contexte, on affiche un message d'info
+}
+
+// ─── GÉNÉRATION DOCX ─────────────────────────────────────────────────────────
+function generateDOCX() {
+  showToast('📄 La génération DOCX nécessite Node.js — utilisez l\'outil de bureau');
+}
+
+function generateAll() {
+  generatePDF();
+}
+
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
+function getData() {
+  return {
+    clientName: document.getElementById('clientName').value,
+    clientAddress: document.getElementById('clientAddress').value,
+    clientCode: document.getElementById('clientCode').value,
+    propRef: document.getElementById('propRef').value,
+    propDate: document.getElementById('propDate').value,
+    power: document.getElementById('power').value,
+    panels: document.getElementById('panels').value,
+    prodStudy: document.getElementById('prodStudy').value,
+    prodReal: document.getElementById('prodReal').value,
+    consumption: document.getElementById('consumption').value,
+    elecPrice: document.getElementById('elecPrice').value,
+    monthly: document.getElementById('monthly').value,
+    duration: document.getElementById('duration').value,
+    cashPrice: document.getElementById('cashPrice').value,
+  };
+}
+
+function fmt(n) {
+  return Math.round(n).toLocaleString('fr-FR');
+}
+function fmtSign(n) {
+  const r = Math.round(n);
+  return (r >= 0 ? '+' : '') + r.toLocaleString('fr-FR');
+}
+function formatDate(d) {
+  return String(d.getDate()).padStart(2,'0') + '/' + String(d.getMonth()+1).padStart(2,'0') + '/' + d.getFullYear();
+}
+
+function showToast(msg, duration = 3000) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), duration);
+}
+
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+document.getElementById('monthly').addEventListener('input', function() {
+  const m = parseFloat(this.value) || 0;
+  const t = parseFloat(document.getElementById('tva').value) || 20;
+  document.getElementById('monthlyTTC').value = (m * (parseInt(document.getElementById('duration').value)||0)).toFixed(2) + ' € HT total';
+  document.getElementById('slMensual').value = m;
+  document.getElementById('lblMensual').textContent = m.toFixed(0);
+  updateFinSummary();
+});
+
+document.getElementById('cashPrice').addEventListener('input', function() {
+  const p = parseFloat(this.value) || 0;
+  const t = parseFloat(document.getElementById('tvaCash').value) || 20;
+  document.getElementById('cashTTC').value = p.toFixed(2) + ' € HT';
+  updateFinSummary();
+});
+
+// Set today's date by default
+const today = new Date();
+document.getElementById('propDate').value = today.toISOString().split('T')[0];
+const validity = new Date(today); validity.setDate(validity.getDate() + 15);
+document.getElementById('propValidity').value = validity.toISOString().split('T')[0];
+
+</script>
+</body>
+</html>
