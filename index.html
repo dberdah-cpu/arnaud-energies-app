@@ -889,7 +889,6 @@ async function parsePDF(file) {
 }
 
 function generatePropRef() {
-  // Génère un numéro de proposition automatique : PR + YYMM + séquence aléatoire
   const now = new Date();
   const yy = String(now.getFullYear()).slice(2);
   const mm = String(now.getMonth() + 1).padStart(2, '0');
@@ -905,125 +904,124 @@ function extractAutoCalSol(text) {
     }
   };
 
-  // ── Nom client ──
-  // AutoCalSol met le nom en titre de rapport — souvent en début de page ou après "pour"
-  // On cherche un bloc en majuscules isolé (nom société)
-  const namePatterns = [
-    /^\s*([A-Z][A-Z\s&'\-\.]{3,50})\s*$/m,                          // ligne entière en majuscules
-    /Rapport[^\n]*\n[^\n]*\n\s*([A-Z][A-Z\s&'\-\.]{3,50})\n/,    // après "Rapport"
-    /pour\s+([A-Z][A-Z\s&'\-\.]{3,50})/i,                             // "pour NOM"
-    /Client\s*[:\-]?\s*([A-Z][A-Z\s&'\-\.]{3,50})/i,               // "Client : NOM"
-  ];
-  for (const pat of namePatterns) {
-    const m = text.match(pat);
-    if (m) {
-      const name = m[1].trim();
-      // Filtrer les faux positifs (mots génériques)
-      if (!['AUTOCALSOL','INES','PVGIS','ENEDIS','RAPPORT','PRODUCTION','CONSOMMATION'].includes(name)) {
-        set('clientName', name);
-        break;
-      }
-    }
-  }
-
-  // ── Adresse ──
-  // Cherche une adresse complète avec numéro + type de voie + code postal
-  const addrPatterns = [
-    /(\d+[,\s]+(?:Rue|Avenue|Boulevard|Allée|Chemin|Impasse|Place|Route|Voie|Quai|Passage)[^\n,]{3,60}\d{5}[^\n]{0,40})/i,
-    /(\d+\s+[A-Z][a-z]+[^\n]{5,50}\d{5}[^\n]{0,30})/,
-  ];
-  for (const pat of addrPatterns) {
-    const m = text.match(pat);
-    if (m) { set('clientAddress', m[1].trim().replace(/\s+/g, ' ')); break; }
-  }
-
-  // ── Puissance kWc → calcul panneaux + surface ──
-  const powMatch = text.match(/(\d+[.,]?\d*)\s*kWc/i);
-  if (powMatch) {
-    const kWc = parseFloat(powMatch[1].replace(',', '.'));
-    set('power', kWc);
-    // 1 panneau = 500 Wc = 0.5 kWc
-    const nbPanneaux = Math.round(kWc / 0.5);
-    // 1 panneau = 2.2 m² (L 2.094m x l 1.134m = 2.374m² mais on utilise 2.2m² surface utile)
-    const surface = Math.round(nbPanneaux * 2.2);
-    set('panels', nbPanneaux);
-    set('pvSurface', surface);
-  }
-
-  // Production annuelle kWh ou MWh
-  const prodMWh = text.match(/(\d+[.,]\d+)\s*MWh[\s\S]{0,30}?(?:produits|production|annuelle)/i);
-  const prodKWh = text.match(/Production[\s\S]{0,30}?(\d[\d\s]{2,6})\s*kWh/i);
-  if (prodMWh) {
-    const val = parseFloat(prodMWh[1].replace(',', '.')) * 1000;
-    set('prodStudy', Math.round(val));
-    calcProd100();
-  } else if (prodKWh) {
-    set('prodStudy', prodKWh[1].replace(/\s/g, ''));
-    calcProd100();
-  }
-
-  // Consommation
-  const consoMWh = text.match(/(\d+[.,]\d+)\s*MWh[\s\S]{0,30}?(?:consomm|annuelle)/i);
-  const consoKWh = text.match(/Consommation[\s\S]{0,30}?(\d[\d\s]{2,6})\s*kWh/i);
-  if (consoMWh) set('consumption', Math.round(parseFloat(consoMWh[1].replace(',','.')) * 1000));
-  else if (consoKWh) set('consumption', consoKWh[1].replace(/\s/g,''));
-
-  // Taux autoconsommation
-  const acMatch = text.match(/(\d+[.,]\d+)\s*%[\s\S]{0,20}?(?:autoconsomm|Consommés sur)/i);
-  if (acMatch) { set('autoconsoRate', acMatch[1].replace(',','.')); syncRates('auto'); }
-
-  // Tarif réseau
-  const tarifMatch = text.match(/(\d+[.,]\d+)\s*c?€\/kWh[\s\S]{0,20}?(?:soutiré|réseau|tarif)/i);
-  if (tarifMatch) {
-    let val = parseFloat(tarifMatch[1].replace(',','.'));
-    if (val > 1) val = val / 100; // centimes → euros
-    set('elecPrice', val.toFixed(2));
-  }
-
-  // Tarif revente
-  const reventeMatch = text.match(/(\d+[.,]\d+)\s*c?€\/kWh[\s\S]{0,30}?(?:inject|revent|surplus|achat)/i);
-  if (reventeMatch) {
-    let val = parseFloat(reventeMatch[1].replace(',','.'));
-    if (val > 1) val = val / 100;
-    set('surplusPrice', val.toFixed(4));
-  }
-
-  // Capex
-  const capexMatch = text.match(/(\d[\d\s]{3,6})\s*€[\s\S]{0,20}?(?:Investissement|CAPEX)/i);
-  if (capexMatch) set('cashPrice', capexMatch[1].replace(/\s/g,''));
-
-  // ── Orientation ──
-  // AutoCalSol indique "Sud", "Nord-Est", "0 °", etc.
-  const orientPatterns = [
-    /Orientation\s*[:\-]?\s*([A-Za-zÀ-ÿ\-]+)/i,
-    /Orientation\s+(\d+\s*°)/i,
-    /([A-Z][a-z]+(?:[\s\-][A-Z][a-z]+)?)\s*Orientation/i,
-    /Orientation\s*\n\s*([^\n]{2,20})/i,
-  ];
-  for (const pat of orientPatterns) {
-    const m = text.match(pat);
-    if (m && m[1] && m[1].length < 30) {
-      set('orientation', m[1].trim());
+  // ── Nom client : 1ère ligne non vide du document ──
+  const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+  // La première ligne significative est le nom (ex: "EDWOOD" ou "DUCHANGE ET ASSOCIES")
+  // On cherche la 1ère ligne qui ne ressemble pas à une date ou un label AutoCalSol
+  for (const line of lines.slice(0, 10)) {
+    if (line.length >= 3 && line.length <= 60
+      && !/^\d{2}[\/\-]\d{2}[\/\-]\d{4}$/.test(line)
+      && !/autocalsol|ines|photovolt|étude|rapport|pvgis/i.test(line)
+      && !/^[0-9]/.test(line)) {
+      set('clientName', line);
       break;
     }
   }
 
-  // ── Inclinaison ──
-  const inclPatterns = [
-    /Inclinaison\s*[:\-]?\s*(\d+[.,]?\d*)\s*°/i,
-    /(\d+)\s*°\s*Inclinaison/i,
-    /Inclinaison\s*\n\s*(\d+[.,]?\d*)\s*°/i,
-  ];
-  for (const pat of inclPatterns) {
-    const m = text.match(pat);
-    if (m) { set('inclination', m[1]); break; }
+  // ── Adresse : numéro + type de voie + code postal, SANS les coordonnées GPS ──
+  // On coupe le texte avant les coordonnées GPS (ex: "50.66135 N" ou "50,6903")
+  const textBeforeGPS = text.replace(/\d{2},?\d{3,5}\s*[NS][,\s]+\d+,?\d+\s*[EW].*/i, '');
+  const addrMatch = textBeforeGPS.match(/(\d+[\w\s]*(?:Rue|Avenue|Boulevard|Allée|Chemin|Impasse|Place|Route|Voie|Quai|Passage|Foch|Ruyant)[^\n,\d]{0,60}\d{5}[^\n\d]{0,40})/i);
+  if (addrMatch) set('clientAddress', addrMatch[1].trim().replace(/\s+/g, ' '));
+
+  // ── Puissance kWc → panneaux + surface ──
+  const powMatch = text.match(/(\d+[.,]?\d*)\s*kWc/i);
+  if (powMatch) {
+    const kWc = parseFloat(powMatch[1].replace(',', '.'));
+    set('power', kWc);
+    const nbPanneaux = Math.round(kWc / 0.5);   // 1 panneau = 500 Wc
+    const surface = Math.round(nbPanneaux * 2.2); // 1 panneau = 2.2 m²
+    set('panels', nbPanneaux);
+    set('pvSurface', surface);
   }
 
-  // ── Taux autoproduction / surplus ──
-  const surplusMatch = text.match(/(\d+[.,]\d+)\s*%[\s\S]{0,30}?(?:Injectés|surplus|injection|réseau public)/i);
-  if (surplusMatch) { set('surplusRate', surplusMatch[1].replace(',','.')); syncRates('surplus'); }
+  // ── Production annuelle : "XX,XX MWh" ou "XX XXX kWh" en haut de page 1 ──
+  // AutoCalSol page 1 : "39,51 MWh" ou "23 031 kWh" dans le bilan énergétique
+  // On prend la PREMIÈRE occurrence de production (pas consommation)
+  const prodMWhMatch = text.match(/([\d]+[,.]\d+)\s*MWh[\s\S]{0,50}?(?:Produits|production|annuelle|l'installation)/i);
+  const prodKWhMatch = text.match(/Production annuelle[\s\S]{0,100}?([\d][\d\s]{2,6})\s*kWh/i);
+  if (prodMWhMatch) {
+    const val = Math.round(parseFloat(prodMWhMatch[1].replace(',', '.')) * 1000);
+    set('prodStudy', val);
+    calcProd100();
+  } else if (prodKWhMatch) {
+    set('prodStudy', prodKWhMatch[1].replace(/\s/g, ''));
+    calcProd100();
+  }
 
-  // ── Date ──
+  // ── Consommation ──
+  const consoMWhMatch = text.match(/([\d]+[,.]\d+)\s*MWh[\s\S]{0,50}?(?:Consommés|consommation|annuelle|place)/i);
+  if (consoMWhMatch) {
+    const val = Math.round(parseFloat(consoMWhMatch[1].replace(',', '.')) * 1000);
+    set('consumption', val);
+  }
+
+  // ── Taux autoconsommation ──
+  const acMatch = text.match(/([\d]+[,.]\d+)\s*%[\s\S]{0,30}?(?:autoconsomm|Consommés sur)/i);
+  if (acMatch) { set('autoconsoRate', acMatch[1].replace(',','.')); syncRates('auto'); }
+
+  // ── Taux surplus ──
+  const surplusMatch = text.match(/([\d]+[,.]\d+)\s*%[\s\S]{0,30}?(?:Injectés|surplus|réseau public)/i);
+  if (surplusMatch) { set('surplusRate', surplusMatch[1].replace(',','.')); }
+
+  // ── Tarif électricité : "Paramètres liés à la consommation" → "XX,XX c€/kWh" ──
+  // Format AutoCalSol : "28,00 c€/kWh" (centimes) ou "0,28 €/kWh"
+  const paramIdx = text.indexOf('Paramètres liés à la consommation');
+  if (paramIdx !== -1) {
+    const paramSection = text.slice(paramIdx, paramIdx + 400);
+    const tarifCentMatch = paramSection.match(/([\d]+[,.]\d+)\s*c€\/kWh/i);
+    const tarifEurMatch = paramSection.match(/([\d]+[,.]\d+)\s*€\/kWh/i);
+    if (tarifCentMatch) {
+      const val = parseFloat(tarifCentMatch[1].replace(',', '.')) / 100;
+      set('elecPrice', val.toFixed(4));
+      document.getElementById('slTarif').value = val;
+      document.getElementById('lblTarif').textContent = val.toFixed(2).replace('.', ',');
+    } else if (tarifEurMatch) {
+      let val = parseFloat(tarifEurMatch[1].replace(',', '.'));
+      if (val > 1) val = val / 100;
+      set('elecPrice', val.toFixed(4));
+    }
+  }
+
+  // ── Tarif revente surplus ──
+  const reventeIdx = text.search(/tarif.*(?:inject|revent|surplus|achat)|(?:inject|revent|surplus).*tarif/i);
+  if (reventeIdx !== -1) {
+    const reventeSection = text.slice(reventeIdx, reventeIdx + 200);
+    const m = reventeSection.match(/([\d]+[,.]\d+)\s*c?€\/kWh/i);
+    if (m) {
+      let val = parseFloat(m[1].replace(',', '.'));
+      if (val > 1) val = val / 100;
+      set('surplusPrice', val.toFixed(4));
+    }
+  }
+
+  // ── Orientation : dans la section "Champ PV" ──
+  // Format : "Sud\nOrientation" ou "0 °\nOrientation"
+  const orientMatch = text.match(/([A-Za-zÀ-ÿ\-]+|\d+\s*°)\s*\nOrientation/i)
+    || text.match(/Orientation\s*\n\s*([A-Za-zÀ-ÿ\-]+|\d+\s*°)/i);
+  if (orientMatch) set('orientation', orientMatch[1].trim());
+
+  // ── Inclinaison : format "(XX) °\nInclinaison" ou "Inclinaison\n(XX) °" ──
+  const inclMatch = text.match(/(\d+[,.]?\d*)\s*°\s*\nInclinaison/i)
+    || text.match(/Inclinaison\s*\n\s*(\d+[,.]?\d*)\s*°/i)
+    || text.match(/Inclinaison\s*[:\-]?\s*(\d+[,.]?\d*)\s*°/i);
+  if (inclMatch) set('inclination', inclMatch[1]);
+
+  // ── Numérotation auto si vides ──
+  if (!document.getElementById('propRef').value) {
+    document.getElementById('propRef').value = generatePropRef();
+    document.getElementById('propRef').classList.add('extracted');
+  }
+  if (!document.getElementById('clientCode').value) {
+    const now = new Date();
+    const yy = String(now.getFullYear()).slice(2);
+    const mm2 = String(now.getMonth() + 1).padStart(2, '0');
+    const seq = String(Math.floor(Math.random() * 90000) + 10000);
+    document.getElementById('clientCode').value = 'CU' + yy + mm2 + '-' + seq;
+    document.getElementById('clientCode').classList.add('extracted');
+  }
+
+  // ── Date du rapport ──
   const dateMatch = text.match(/Le\s+(\d{2})\/(\d{2})\/(\d{4})/);
   if (dateMatch) {
     const d = `${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]}`;
@@ -1031,25 +1029,8 @@ function extractAutoCalSol(text) {
     const dt = new Date(d); dt.setDate(dt.getDate() + 15);
     set('propValidity', dt.toISOString().split('T')[0]);
   }
-
-  // ── Numérotation automatique si pas encore rempli ──
-  const propRefEl = document.getElementById('propRef');
-  if (!propRefEl.value) {
-    propRefEl.value = generatePropRef();
-    propRefEl.classList.add('extracted');
-  }
-
-  // ── Code client automatique ──
-  const clientCodeEl = document.getElementById('clientCode');
-  if (!clientCodeEl.value) {
-    const now = new Date();
-    const yy = String(now.getFullYear()).slice(2);
-    const mm = String(now.getMonth() + 1).padStart(2, '0');
-    const seq = String(Math.floor(Math.random() * 90000) + 10000);
-    clientCodeEl.value = 'CU' + yy + mm + '-' + seq;
-    clientCodeEl.classList.add('extracted');
-  }
 }
+
 
 // ─── CALCULS PRODUCTION ──────────────────────────────────────────────────────
 function calcProd100() {
@@ -1184,9 +1165,11 @@ function runSim() {
   simData = [];
 
   if (simMode === 'lisse') {
-    // Mode lissé : on calcule d'abord les revenus RÉELS sur 30 ans (avec dégradation + inflation)
-    // puis on divise par 30 pour obtenir une économie moyenne annuelle constante
-    // pendant les années de financement, on déduit la mensualité annuelle
+    // Mode lissé :
+    // 1. Calcul des revenus RÉELS année par année sur 30 ans (dégradation + inflation)
+    // 2. Total divisé par 30 = économie moyenne annuelle lissée
+    // 3. Pendant les années de financement : gain net = moyenne - mensualité annuelle
+    // 4. Après financement : gain net = moyenne seule
 
     let totalRevReal = 0;
     for (let y = 1; y <= 30; y++) {
@@ -1200,14 +1183,16 @@ function runSim() {
       }
       totalRevReal += prod * acRate * tarif + prod * surplusRate * surplusPrice;
     }
-    const avgRevAnnual = Math.round(totalRevReal / 30); // économie moyenne lissée
+    // Économie moyenne annuelle = total réel 30 ans / 30
+    const avgRevAnnual = Math.round(totalRevReal / 30);
 
     let cum = 0;
     for (let y = 1; y <= 30; y++) {
       const fin = y <= finYears ? annualFin : 0;
+      // Gain net = économie moyenne - échéance annuelle (0 après financement)
       const net = avgRevAnnual - fin;
       cum += net;
-      simData.push({ y, prod: prod0, tarif: tarif0, rev: avgRevAnnual, fin, net, cum });
+      simData.push({ y, prod: Math.round(prod0), tarif: tarif0, rev: avgRevAnnual, fin, net, cum });
     }
   } else {
     // Mode réel année par année
