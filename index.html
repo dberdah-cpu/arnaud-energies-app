@@ -1662,7 +1662,7 @@ function generatePDF() {
             columns: [
               {
                 stack: [
-                  { image: LOGO_B64, width: 130, margin: [0, 0, 0, 0] },
+                  ...(LOGO_B64 ? [{ image: LOGO_B64, width: 130, margin: [0, 0, 0, 0] }] : [{ text: 'Arnaud Energies', bold: true, fontSize: 18, color: '#1E5C2E' }]),
                 ],
                 width: 140
               },
@@ -2091,7 +2091,7 @@ function generatePDF() {
             columns: [
               {
                 stack: [
-                  { image: LOGO_B64, width: 130, margin: [0, 0, 0, 0] },
+                  ...(LOGO_B64 ? [{ image: LOGO_B64, width: 130, margin: [0, 0, 0, 0] }] : [{ text: 'Arnaud Energies', bold: true, fontSize: 18, color: '#1E5C2E' }]),
                 ],
                 width: 140
               },
@@ -2442,19 +2442,39 @@ async function calcBattery() {
     const lonClean = lon.toString().replace(/[NSEW°]/gi,'').trim();
 
     // Essayer v5_3 puis v5_2 en fallback
-    const pvgisBase = `https://re.jrc.ec.europa.eu/api/v5_2/seriescalc?lat=${latClean}&lon=${lonClean}&startyear=2020&endyear=2020&pvcalculation=1&peakpower=${power}&loss=14&angle=${inclination}&aspect=${azimuth}&outputformat=json&browser=1`;
+    const pvgisParams = `lat=${latClean}&lon=${lonClean}&startyear=2020&endyear=2020&pvcalculation=1&peakpower=${power}&loss=14&angle=${inclination}&aspect=${azimuth}&outputformat=json&browser=1`;
+    const pvgisBase = `https://re.jrc.ec.europa.eu/api/v5_2/seriescalc?${pvgisParams}`;
+    const corsProxies = [
+      'https://corsproxy.io/?' + encodeURIComponent(pvgisBase),
+      'https://api.allorigins.win/raw?url=' + encodeURIComponent(pvgisBase),
+      'https://cors-anywhere.herokuapp.com/' + pvgisBase,
+    ];
     
-    // Essayer d'abord sans proxy (mode local), puis avec proxy CORS (GitHub Pages)
-    const corsProxy = 'https://corsproxy.io/?';
-    let resp;
+    let resp = null;
+    // Essai direct d'abord (fonctionne en local)
     try {
-      resp = await fetch(pvgisBase);
-      if (!resp.ok) throw new Error('direct failed');
-    } catch(e) {
-      status.textContent = 'CORS direct bloqué, utilisation du proxy...';
-      resp = await fetch(corsProxy + encodeURIComponent(pvgisBase));
+      resp = await Promise.race([
+        fetch(pvgisBase),
+        new Promise((_,rej) => setTimeout(() => rej(new Error('timeout')), 5000))
+      ]);
+      if (!resp.ok) resp = null;
+    } catch(e) { resp = null; }
+    
+    // Si bloqué par CORS, essayer les proxies
+    if (!resp) {
+      status.textContent = '[GPS] Connexion directe bloquée, essai via proxy...';
+      for (const proxyUrl of corsProxies) {
+        try {
+          resp = await Promise.race([
+            fetch(proxyUrl),
+            new Promise((_,rej) => setTimeout(() => rej(new Error('timeout')), 8000))
+          ]);
+          if (resp.ok) { status.textContent = '[OK] Proxy PVGIS connecté...'; break; }
+          resp = null;
+        } catch(e) { resp = null; }
+      }
     }
-    if (!resp.ok) throw new Error('PVGIS erreur ' + resp.status + ' -- coordonnées : ' + latClean + ', ' + lonClean);
+    if (!resp || !resp.ok) throw new Error('PVGIS inaccessible -- vérifiez votre connexion. Coordonnées : ' + latClean + ', ' + lonClean);
     const json = await resp.json();
     if (!json.outputs || !json.outputs.hourly) throw new Error('Réponse PVGIS invalide -- ' + JSON.stringify(json).slice(0,200));
     pvgisData = json.outputs.hourly; // 8760 points
@@ -2675,7 +2695,18 @@ function generateMaintenance() {
       const dateStr = formatDate(today);
       const dureeAns = finMode === 'mensual' ? Math.ceil((parseInt(d.duration)||84)/12) : 8;
 
-      if (!window.docx) throw new Error('Librairie docx non chargee - rechargez la page');
+      if (!window.docx) {
+      // Tentative de chargement dynamique
+      await new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'https://unpkg.com/docx@8.5.0/build/index.js';
+        s.onload = resolve;
+        s.onerror = reject;
+        document.head.appendChild(s);
+      });
+      await new Promise(r => setTimeout(r, 500));
+    }
+    if (!window.docx) throw new Error('Librairie docx non chargee - rechargez la page');
       const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
         AlignmentType, HeadingLevel, BorderStyle, WidthType, ShadingType } = window.docx;
 
