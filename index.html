@@ -9,11 +9,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pptxgenjs/3.12.0/pptxgen.bundle.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.js" crossorigin="anonymous" onerror="
-  var s=document.createElement('script');
-  s.src='https://unpkg.com/docx@8.5.0/build/index.js';
-  document.head.appendChild(s);
-"></script>
+<!-- docx chargé dynamiquement -->
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -2341,10 +2337,23 @@ function generatePDF() {
 }
 
 // --- GÉNÉRATION PPTX ---------------------------------------------------------
-async 
 // --- GÉNÉRATION PPTX ---------------------------------------------------------
-async 
-async 
+
+// Charger docx de facon non-bloquante apres le chargement
+window.addEventListener('load', function() {
+  function tryLoadDocx(urls, idx) {
+    if (idx >= urls.length) return;
+    var s = document.createElement('script');
+    s.src = urls[idx];
+    s.onload = function() { console.log('docx OK: ' + urls[idx]); };
+    s.onerror = function() { tryLoadDocx(urls, idx + 1); };
+    document.head.appendChild(s);
+  }
+  tryLoadDocx([
+    'https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.js',
+    'https://unpkg.com/docx@8.5.0/build/index.js'
+  ], 0);
+});
 </script>
 </body>
 </html>
