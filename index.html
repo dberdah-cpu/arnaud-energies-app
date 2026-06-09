@@ -518,6 +518,13 @@ td:first-child { text-align: center; font-weight: 600; color: var(--gray); }
           <input class="field-input" id="surplusRate" placeholder="35.2" type="number" step="0.1" oninput="syncRates('surplus')">
         </div>
         <div class="field-group">
+          <label class="field-label">Type de projet</label>
+          <select class="field-input" id="projectType" onchange="runSim()">
+            <option value="autoconso">Autoconsommation + revente surplus</option>
+            <option value="total">Revente totale (tout vendu réseau)</option>
+          </select>
+        </div>
+        <div class="field-group">
           <label class="field-label">Tarif revente surplus (€/kWh)</label>
           <input class="field-input" id="surplusPrice" placeholder="0.069" type="number" step="0.001">
         </div>
@@ -578,8 +585,12 @@ td:first-child { text-align: center; font-weight: 600; color: var(--gray); }
           <input class="field-input" id="monthly" placeholder="711" type="number" step="0.01">
         </div>
         <div class="field-group">
-          <label class="field-label">Durée (mois)</label>
+          <label class="field-label">Durée financement (mois)</label>
           <input class="field-input" id="duration" placeholder="84" type="number">
+        </div>
+        <div class="field-group">
+          <label class="field-label">Durée étude économique (ans)</label>
+          <input class="field-input" id="studyDuration" placeholder="30" type="number" value="30" oninput="runSim()">
         </div>
         <div class="field-group">
           <label class="field-label">TVA (%)</label>
@@ -769,7 +780,7 @@ td:first-child { text-align: center; font-weight: 600; color: var(--gray); }
       </div>
 
       <!-- Curseurs principaux -->
-      <div class="sliders-row">
+      <div class="sliders-row" style="grid-template-columns:repeat(2,1fr)">
         <div class="slider-group">
           <div class="slider-header">
             <span class="slider-label">Tarif électricité (€/kWh)</span>
@@ -790,6 +801,13 @@ td:first-child { text-align: center; font-weight: 600; color: var(--gray); }
             <span class="slider-val" id="lblMensual">711</span>
           </div>
           <input type="range" id="slMensual" min="100" max="3000" step="1" value="711" oninput="updateSlider('mensual')">
+        </div>
+        <div class="slider-group">
+          <div class="slider-header">
+            <span class="slider-label">Tarif revente surplus (€/kWh)</span>
+            <span class="slider-val" id="lblSurplus">0,069</span>
+          </div>
+          <input type="range" id="slSurplus" min="0.04" max="0.20" step="0.001" value="0.069" oninput="updateSlider('surplus')">
         </div>
       </div>
 
@@ -825,7 +843,7 @@ td:first-child { text-align: center; font-weight: 600; color: var(--gray); }
       </div>
 
       <!-- KPIs -->
-      <div class="kpi-bar">
+      <div class="kpi-bar" style="grid-template-columns:repeat(5,1fr)">
         <div class="kpi-card">
           <div class="kpi-val neg" id="kpiDeficit">—</div>
           <div class="kpi-lbl">Déficit cumulé max</div>
@@ -836,11 +854,15 @@ td:first-child { text-align: center; font-weight: 600; color: var(--gray); }
         </div>
         <div class="kpi-card">
           <div class="kpi-val pos" id="kpiGains30">—</div>
-          <div class="kpi-lbl">Gains nets 30 ans</div>
+          <div class="kpi-lbl">Gains nets étude</div>
         </div>
         <div class="kpi-card">
           <div class="kpi-val" id="kpiAn1">—</div>
           <div class="kpi-lbl">Résultat an 1 (mois)</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-val" id="kpiAmort" style="color:var(--gold)">—</div>
+          <div class="kpi-lbl">Amortissement réel</div>
         </div>
       </div>
 
@@ -927,28 +949,32 @@ td:first-child { text-align: center; font-weight: 600; color: var(--gray); }
           <div class="gen-icon">🔧</div>
           <div class="gen-title">Contrat de maintenance</div>
           <div class="gen-sub">Contrat B2B 15 articles — SLA, gouvernance, HSE — pré-rempli avec les données client</div>
+
+
+
+
+
           <button class="btn btn-primary btn-full" onclick="generateMaintenance()" id="btnMaint">
             <span class="spinner" id="spinMaint"></span>
             Générer contrat maintenance
           </button>
         </div>
-      </div
+      </div>
 
-    <div class="nav-row">
-      <button class="btn btn-outline" onclick="goStep(3)">← Retour simulation</button>
-      <button class="btn btn-primary" onclick="generateAll()">⬇ Tout télécharger</button>
+      <div class="nav-row">
+        <button class="btn btn-outline" onclick="goStep(3)">← Retour simulation</button>
+        <button class="btn btn-primary" onclick="generateAll()">⬇ Tout télécharger</button>
+      </div>
     </div>
+
   </div>
 
 </main>
 
 <div class="toast" id="toast"></div>
 
-<!-- ==============================================
-     JAVASCRIPT
-============================================== -->
 <script>
-// --- LOGO (chargé depuis GitHub Pages) --------------------------------------
+// LOGO (chargé depuis GitHub Pages) --------------------------------------
 // Essayer les deux casses possibles du logo
 const LOGO_URL = 'https://dberdah-cpu.github.io/arnaud-energies-app/IMG_7499.PNG';
 const LOGO_URL_ALT = 'https://dberdah-cpu.github.io/arnaud-energies-app/img_7499.png';
@@ -1179,6 +1205,16 @@ function extractAutoCalSol(text) {
     document.getElementById('clientCode').classList.add('extracted');
   }
 
+  // -- Durée étude économique (20 ou 30 ans) --
+  const durationMatch = text.match(/([23][05]|30|25|20)\s*(?:ans|annees|years)/i);
+  if (durationMatch) set('studyDuration', durationMatch[1]);
+
+  // -- Type de projet (autoconsommation vs revente totale) --
+  if (/revente\s*totale|vente\s*totale|injection\s*totale/i.test(text)) {
+    const selPT = document.getElementById('projectType');
+    if (selPT) selPT.value = 'total';
+  }
+
   // -- Date du rapport --
   const dateMatch = text.match(/Le\s+(\d{2})\/(\d{2})\/(\d{4})/);
   if (dateMatch) {
@@ -1279,6 +1315,11 @@ function updateSlider(type) {
     const v = parseFloat(document.getElementById('slMensual').value);
     document.getElementById('lblMensual').textContent = v.toFixed(0);
     document.getElementById('monthly').value = v;
+  } else if (type === 'surplus') {
+    const v = parseFloat(document.getElementById('slSurplus').value);
+    document.getElementById('lblSurplus').textContent = v.toFixed(3).replace('.', ',');
+    document.getElementById('simSurplus').value = v;
+    document.getElementById('surplusPrice').value = v;
   }
   runSim();
 }
@@ -1297,6 +1338,11 @@ function syncAdvancedFromStep1() {
     document.getElementById('slTarif').value = tarif;
     document.getElementById('lblTarif').textContent = parseFloat(tarif).toFixed(2).replace('.', ',');
   }
+  // Sync surplus slider
+  const spVal = document.getElementById('surplusPrice').value || document.getElementById('simSurplus').value || '0.069';
+  document.getElementById('slSurplus').value = spVal;
+  document.getElementById('lblSurplus').textContent = parseFloat(spVal).toFixed(3).replace('.', ',');
+  document.getElementById('simSurplus').value = spVal;
   const m = finMode === 'mensual' ? parseFloat(document.getElementById('monthly').value) : 0;
   if (m) {
     document.getElementById('slMensual').value = m;
@@ -1331,7 +1377,8 @@ function runSim() {
 
     // Calcul réel pour obtenir les gains nets totaux
     let totalNets = 0;
-    for (let y = 1; y <= 30; y++) {
+    const studyYears = parseInt(document.getElementById('studyDuration').value) || 30;
+    for (let y = 1; y <= studyYears; y++) {
       const prod = prod0 * (1 - degradation) ** (y - 1);
       let tarif;
       if (y <= priceLock) {
@@ -1340,7 +1387,15 @@ function runSim() {
         const yearsInflated = y - Math.max(priceLock, inflStart - 1);
         tarif = yearsInflated > 0 ? tarif0 * (1 + inflation) ** yearsInflated : tarif0;
       }
-      const rev = prod * acRate * tarif + prod * surplusRate * surplusPrice;
+      const projectType = document.getElementById('projectType') ? document.getElementById('projectType').value : 'autoconso';
+      let rev;
+      if (projectType === 'total') {
+        // Revente totale : toute la production vendue au tarif revente
+        rev = prod * surplusPrice;
+      } else {
+        // Autoconsommation + revente surplus
+        rev = prod * acRate * tarif + prod * surplusRate * surplusPrice;
+      }
       const fin = y <= finYears ? annualFin : 0;
       totalNets += rev - fin;
     }
@@ -1363,8 +1418,9 @@ function runSim() {
 
   } else {
     // Mode réel année par année
+    const studyYearsR = parseInt(document.getElementById('studyDuration').value) || 30;
     let cum = 0;
-    for (let y = 1; y <= 30; y++) {
+    for (let y = 1; y <= studyYearsR; y++) {
       const prod = Math.round(prod0 * (1 - degradation) ** (y - 1));
       let tarif;
       if (y <= priceLock) {
@@ -1373,8 +1429,15 @@ function runSim() {
         const yearsInflated = y - Math.max(priceLock, inflStart - 1);
         tarif = yearsInflated > 0 ? tarif0 * (1 + inflation) ** yearsInflated : tarif0;
       }
-      const revPV = Math.round(prod * acRate * tarif + prod * surplusRate * surplusPrice);
-      const revBat = Math.round(getBatteryGain()); // gain annuel batterie (constant)
+      const projectTypeR = document.getElementById('projectType') ? document.getElementById('projectType').value : 'autoconso';
+      let revPV;
+      if (projectTypeR === 'total') {
+        // Revente totale
+        revPV = Math.round(prod * surplusPrice);
+      } else {
+        revPV = Math.round(prod * acRate * tarif + prod * surplusRate * surplusPrice);
+      }
+      const revBat = Math.round(getBatteryGain());
       const rev = revPV + revBat;
       const fin = y <= finYears ? annualFin : 0;
       const net = rev - fin;
@@ -1423,6 +1486,7 @@ function updateKPIs() {
   setKpi('kpiRetour',  '', '',   'Retour positif cumulé');
   setKpi('kpiGains30', '', '',   'Gains nets 30 ans');
   setKpi('kpiAn1',     '', '',   'Résultat an 1 (mois)');
+  setKpi('kpiAmort',   '', '',   'Amortissement réel');
 
   const minCum  = Math.min(...simData.map(d => d.cum));
   const retour  = simData.find(d => d.cum >= 0);
@@ -2325,23 +2389,37 @@ document.getElementById('cashPrice').addEventListener('input', function() {
 // Init au chargement
 const today = new Date();
 // Charger le logo depuis GitHub pour les PDFs
+
+// --- LOGO (chargé depuis GitHub Pages) --------------------------------------
+// Essayer les deux casses possibles du logo
+
 function loadLogo(url) {
   return fetch(url)
-    .then(r => { if (!r.ok) throw new Error(r.status); return r.blob(); })
-    .then(blob => new Promise(resolve => {
+    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.blob(); })
+    .then(blob => new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result);
+      reader.onloadend = () => {
+        const result = reader.result;
+        // Verify it's a valid image data URL
+        if (result && result.startsWith('data:image')) resolve(result);
+        else reject(new Error('Not an image'));
+      };
+      reader.onerror = () => reject(new Error('FileReader error'));
       reader.readAsDataURL(blob);
     }));
 }
+// Try PNG then lowercase png
 loadLogo(LOGO_URL)
   .catch(() => loadLogo(LOGO_URL_ALT))
   .then(dataUrl => {
     LOGO_B64 = dataUrl;
     window.LOGO_B64_RAW = dataUrl.split(',')[1];
-    console.log('Logo charge depuis GitHub');
+    console.log('Logo OK :', dataUrl.length, 'chars');
   })
-  .catch(e => console.log('Logo non disponible :', e.message));
+  .catch(e => {
+    console.log('Logo non disponible :', e.message);
+    LOGO_B64 = null;
+  });
 
 document.getElementById('propDate').value = today.toISOString().split('T')[0];
 const validity = new Date(today); validity.setDate(validity.getDate() + 15);
