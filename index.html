@@ -958,7 +958,17 @@ td:first-child { text-align: center; font-weight: 600; color: var(--gray); }
 
 // --- LOGO (chargé depuis GitHub Pages) --------------------------------------
 // Essayer les deux casses possibles du logo
-<script>
+<script>// ─── TOAST ────────────────────────────────────────────────────────────────────
+function showToast(msg, duration) {
+  duration = duration || 3000;
+  const t = document.getElementById('toast');
+  if (!t) return;
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(function() { t.classList.remove('show'); }, duration);
+}
+
+
 
 // URLs logo à essayer dans l'ordre
 const LOGO_URLS = [
