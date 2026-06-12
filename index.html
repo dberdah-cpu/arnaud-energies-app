@@ -632,8 +632,8 @@ td:first-child { text-align: center; font-weight: 600; color: var(--gray); }
             <div class="kpi-lbl">Panneaux possibles (2,2 m²)</div>
           </div>
           <div class="kpi-card" style="flex:1;min-width:140px">
-            <div class="kpi-val" id="roofPower" style="color:var(--dark)">— kWc</div>
-            <div class="kpi-lbl">Puissance estimée (500 Wc)</div>
+            <div class="kpi-val" id="roofPower" style="color:var(--green)">— kWc</div>
+            <div class="kpi-lbl">Puissance potentielle possible</div>
           </div>
         </div>
         <div id="roofMap" style="height:480px;border-radius:12px;border:1px solid var(--border);overflow:hidden"></div>
@@ -1184,12 +1184,23 @@ function extractAutoCalSol(text) {
     set('clientAddress', clientAddress);
   }
 
-  // Nom client : généralement avant "Etude photovoltaïque" ou c'est le titre principal
-  // Format AutoCalsol : le nom est souvent en en-tête, ou absent de la page 1 technique
-  // On cherche un nom avant "Etude photovoltaïque" ou après un label
-  const nomMatch = text.match(/^([A-ZÀ-Ÿ][A-Za-zÀ-ÿ'.\s&-]{2,50}?)\s+(?:Etude|Rapport|Aperçu)/);
-  if (nomMatch && nomMatch[1].trim().length > 2 && !/photovolta|aperçu|informations/i.test(nomMatch[1])) {
-    set('clientName', nomMatch[1].trim());
+  // Nom client : dans l'en-tête, juste AVANT "Rapport généré sur AutoCalsol"
+  // Format : "[NOM CLIENT]  Rapport généré sur AutoCalsol Le JJ/MM/AAAA"
+  const nomMatch = text.match(/([A-ZÀ-Ÿ][A-Za-zÀ-ÿ0-9'.\s&-]{2,50}?)\s+Rapport\s+g[ée]n[ée]r[ée]\s+sur\s+AutoCalsol/i);
+  if (nomMatch) {
+    let nom = nomMatch[1].trim();
+    // Nettoyer si le match a attrapé du texte parasite
+    nom = nom.replace(/.*(?:responsable|conclusions|rapport)\.?\s*/i, '').trim();
+    if (nom.length >= 2 && nom.length <= 50 && !/photovolta|aperçu|informations|étude/i.test(nom)) {
+      set('clientName', nom);
+    }
+  }
+  // Fallback : début du document si commence par un nom (pas "Etude")
+  if (!document.getElementById('clientName').value) {
+    const firstLine = text.trim().split(/\s{2,}|\n/)[0];
+    if (firstLine && firstLine.length >= 2 && firstLine.length <= 50 && !/etude|photovolta|aperçu/i.test(firstLine)) {
+      set('clientName', firstLine.trim());
+    }
   }
 
   // Si GPS disponible et pas d'adresse, faire reverse geocoding
@@ -1619,6 +1630,7 @@ function updateKPIs() {
 
   if (simMode === 'lisse' && simData[0] && simData[0].lisse) {
     const d = simData[0];
+    const studyYearsLisse = parseInt(document.getElementById('studyDuration') ? document.getElementById('studyDuration').value : 30) || 30;
     // Gain moyen mensuel pendant financement = (gains30/30/12) - mensualite mensuelle
     const mensualiteHT = d.annualFin / 12;
     const gainMoisAvecFin = Math.round(d.gainsNets30 / 30 / 12 - mensualiteHT);
@@ -1626,7 +1638,7 @@ function updateKPIs() {
 
     setKpi('kpiGains30',  fmtSign(d.gainsNets30) + ' EUR',        'pos', 'Gains nets 30 ans');
     setKpi('kpiDeficit',  fmtSign(d.gainMoyenAnnuel) + ' EUR/an', 'pos', 'Gain annuel moyen (30 ans / 30)');
-    setKpi('kpiAn1',      fmtSign(gainMoisSansFin) + ' EUR/mois', 'pos', 'Gain mensuel moyen (30 ans / 30 / 12)');
+    setKpi('kpiAn1',      fmtSign(gainMoisSansFin) + ' EUR/mois', 'pos', 'Gain mensuel moyen (' + studyYearsLisse + ' ans)');
     setKpi('kpiRetour',
       d.finYears > 0 ? fmtSign(gainMoisAvecFin) + ' EUR/mois' : '--',
       gainMoisAvecFin >= 0 ? 'pos' : 'neg',
@@ -1762,6 +1774,7 @@ function renderChart() {
 
   if (simMode === 'lisse' && simData[0] && simData[0].lisse) {
     const d = simData[0];
+    const studyYearsLisse = parseInt(document.getElementById('studyDuration') ? document.getElementById('studyDuration').value : 30) || 30;
     const avecFin = Math.round(d.gainsNets30 / 30 / 12) - Math.round(d.annualFin / 12);
     const sansFin = Math.round(d.gainsNets30 / 30 / 12);
     chart = new Chart(ctx, {
@@ -2660,9 +2673,16 @@ async function generatePPTX() {
 
 // --- GÉNÉRATION DOCX --------------
 
-function generateAll() {
-  generatePDF();
-  generateMaintenance();
+async function generateAll() {
+  showToast('Génération des 4 documents...', 12000);
+  try { generatePDF(); } catch(e) { console.error('PDF:', e); }
+  await new Promise(r => setTimeout(r, 1500));
+  try { await generatePPTX(); } catch(e) { console.error('PPTX:', e); }
+  await new Promise(r => setTimeout(r, 1500));
+  try { await generateDOCX(); } catch(e) { console.error('DOCX:', e); }
+  await new Promise(r => setTimeout(r, 1500));
+  try { generateMaintenance(); } catch(e) { console.error('Maintenance:', e); }
+  showToast('Documents générés !');
 }
 
 // --- HELPERS -----------------------------------------------------------------
@@ -3382,7 +3402,7 @@ window._roofImageB64 = null;
 
 function initRoofMap() {
   if (roofMap) return;
-  roofMap = L.map('roofMap', { center: [46.6, 2.5], zoom: 6 });
+  roofMap = L.map('roofMap', { center: [46.6, 2.5], zoom: 6, doubleClickZoom: false, maxZoom: 21 });
 
   // Orthophotos IGN (flux public data.geopf.fr, sans clé depuis 2024)
   // Orthophotos IGN via le flux public data.geopf.fr (format chemin REST)
@@ -3547,7 +3567,7 @@ function locateRoof() {
   if (gps) {
     var parts = gps.replace(/[NSEWnsew]/g,' ').replace(/,/g,'.').trim().split(/[\s;]+/).map(parseFloat).filter(function(n){return !isNaN(n);});
     if (parts.length >= 2) {
-      roofMap.setView([parts[0], parts[1]], 20); roofMap.setMaxZoom(21);
+      roofMap.setView([parts[0], parts[1]], 19);
       showToast('Toit localisé via GPS');
       return;
     }
@@ -3558,7 +3578,7 @@ function locateRoof() {
       .then(function(data){
         if (data.features && data.features.length > 0) {
           var c = data.features[0].geometry.coordinates;
-          roofMap.setView([c[1], c[0]], 20); roofMap.setMaxZoom(21);
+          roofMap.setView([c[1], c[0]], 19);
           // GPS de l'adresse PRIORITAIRE (centré sur le bâtiment, plus précis que le PDF)
           var gpsStr = c[1].toFixed(5) + ', ' + c[0].toFixed(5);
           var gpsEl = document.getElementById('gpsCoords');
@@ -3800,7 +3820,7 @@ window.addEventListener('load', function() {
     s.onerror = function() { tryDocx(urls, i+1); };
     document.head.appendChild(s);
   }
-  tryDocx(['https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.js','https://unpkg.com/docx@8.5.0/build/index.js'], 0);
+  tryDocx(['https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js','https://unpkg.com/docx@8.5.0/build/index.umd.js','https://cdn.jsdelivr.net/npm/docx@9.5.1/build/index.umd.js'], 0);
 });
 </script>
 </body>
