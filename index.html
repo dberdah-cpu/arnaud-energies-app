@@ -855,7 +855,7 @@ td:first-child { text-align: center; font-weight: 600; color: var(--gray); }
       <!-- Mode toggle -->
       <div class="sim-header">
         <div class="mode-toggle">
-          <button class="mode-btn active" id="btnLisse" onclick="setSimMode('lisse')">📈 Lissé 30 ans</button>
+          <button class="mode-btn active" id="btnLisse" onclick="setSimMode('lisse')">📈 Lissé <span id="lisseYears">30</span> ans</button>
           <button class="mode-btn" id="btnReel" onclick="setSimMode('reel')">📋 Réel an/an</button>
         </div>
         <span class="badge badge-green" id="modeLabel">Vue simplifiée</span>
@@ -1032,7 +1032,20 @@ td:first-child { text-align: center; font-weight: 600; color: var(--gray); }
         <div class="gen-card">
           <div class="gen-icon">📄</div>
           <div class="gen-title">Contrat d'installation</div>
-          <div class="gen-sub">Document Word — articles, annexes, tableau 30 ans + mention contrat maintenance</div>
+          <div class="gen-sub">Document Word — articles, annexes, tableau d'étude + mention contrat maintenance</div>
+          <button class="btn btn-outline btn-full" onclick="generateDOCX()" id="btnDOCX">
+            <span class="spinner" id="spinDOCX"></span>
+            Générer contrat installation
+          </button>
+        </div>
+        <div class="gen-card">
+          <div class="gen-icon">🔧</div>
+          <div class="gen-title">Contrat de maintenance</div>
+          <div class="gen-sub">Document Word — SLA, gouvernance, HSE, pré-rempli avec les données client</div>
+          <button class="btn btn-outline btn-full" onclick="generateMaintenance()" id="btnMaint">
+            <span class="spinner" id="spinMaint"></span>
+            Générer contrat maintenance
+          </button>
         </div>
       </div>
 
@@ -1521,6 +1534,10 @@ function syncAdvancedFromStep1() {
 }
 
 function runSim() {
+  // Mettre à jour le libellé des années dans le bouton mode lissé
+  const _sy = document.getElementById('studyDuration') ? document.getElementById('studyDuration').value : 30;
+  const _ly = document.getElementById('lisseYears');
+  if (_ly) _ly.textContent = _sy;
   const tarif0 = parseFloat(document.getElementById('slTarif').value) || 0.26;
   const inflation = parseFloat(document.getElementById('slInflation').value) / 100;
   const monthly = finMode === 'cash' ? 0 : (parseFloat(document.getElementById('slMensual').value) || 0);
@@ -1669,7 +1686,7 @@ function updateKPIs() {
 
   const minCum  = Math.min(...simData.map(d => d.cum));
   const retour  = simData.find(d => d.cum >= 0);
-  const gains30 = simData[29].cum;
+  const gains30 = simData[simData.length - 1].cum;
   const an1     = simData[0].net;
 
   setKpi('kpiDeficit', minCum < 0 ? fmtSign(minCum) + ' EUR' : '0 EUR', minCum < 0 ? 'neg' : 'pos', 'Déficit cumulé max');
@@ -1846,7 +1863,7 @@ function updateRecap() {
   document.getElementById('retainedMode').textContent = (simMode === 'lisse' ? 'Lissé ' : 'Réel ') + nbAnsRec + ' ans' + ptLabel;
   document.getElementById('recapPower').textContent = (document.getElementById('power').value || '--') + ' kWc';
   document.getElementById('recapProd').textContent = fmt(parseInt(document.getElementById('prodReal').value) || 0) + ' kWh';
-  // En mode lissé simData[0].gainsNets30, en mode réel simData[29].cum
+  // En mode lissé simData[0].gainsNets30, en mode réel simData[simData.length - 1].cum
   const gains30 = simData.length
     ? (simData[0].lisse ? simData[0].gainsNets30 : simData[simData.length - 1].cum)
     : 0;
@@ -2109,10 +2126,10 @@ function generatePDF() {
               widths: ['*', '*'],
               body: [
                 [{ text: 'Caractéristique', bold: true, fillColor: '#1A3A2A', color: '#F9A825', fontSize: 10 }, { text: 'Valeur', bold: true, fillColor: '#1A3A2A', color: '#F9A825', fontSize: 10, alignment: 'right' }],
-                ['Surface toiture mesurée', { text: surfMes.toLocaleString('fr-FR') + ' m²', alignment: 'right', bold: true }],
-                ['Surface utile disponible', { text: surfUtile.toLocaleString('fr-FR') + ' m²', alignment: 'right', bold: true }],
-                ['Panneaux installés (projet)', { text: panNec + ' panneaux', alignment: 'right', bold: true }],
-                ['Surface nécessaire (projet)', { text: surfNec.toLocaleString('fr-FR') + ' m²', alignment: 'right', bold: true }],
+                ['Surface toiture mesuree', { text: surfMes.toLocaleString('fr-FR') + ' m2', alignment: 'right', bold: true }],
+                ['Surface utile disponible', { text: surfUtile.toLocaleString('fr-FR') + ' m2', alignment: 'right', bold: true }],
+                ['Panneaux installes (projet)', { text: panNec + ' panneaux', alignment: 'right', bold: true }],
+                ['Surface necessaire (projet)', { text: surfNec.toLocaleString('fr-FR') + ' m2', alignment: 'right', bold: true }],
                 ['Panneaux max possibles', { text: panMax + ' panneaux', alignment: 'right', bold: true }],
                 ['Puissance installée', { text: (d.power||'--') + ' kWc', alignment: 'right', bold: true, color: '#2E7D32' }],
               ]
@@ -2141,7 +2158,7 @@ async function generatePPTX() {
   showToast('Generation de la presentation...', 8000);
   try {
     const d = getData();
-    const gains30 = simData.length ? (simData[0].lisse ? simData[0].gainsNets30 : simData[29].cum) : 0;
+    const gains30 = simData.length ? (simData[0].lisse ? simData[0].gainsNets30 : simData[simData.length - 1].cum) : 0;
     const an1Net = simData.length && !simData[0].lisse ? Math.round(simData[0].net / 12) : Math.round(gains30/30/12);
     const defMax = simData.length && !simData[0].lisse ? Math.min(...simData.map(x=>x.cum)) : 0;
     const retour = simData.length && !simData[0].lisse ? (simData.find(x=>x.cum>=0)||{y:'?'}).y : 'An 3';
@@ -2275,7 +2292,7 @@ async function generateDOCX() {
     const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
       AlignmentType, HeadingLevel, BorderStyle, WidthType, ShadingType } = window.docx;
 
-    const gains30 = simData.length ? (simData[0].lisse ? simData[0].gainsNets30 : simData[29].cum) : 0;
+    const gains30 = simData.length ? (simData[0].lisse ? simData[0].gainsNets30 : simData[simData.length - 1].cum) : 0;
     const isMensual = finMode === 'mensual';
     const monthly = parseFloat(d.monthly) || 0;
     const duration = parseInt(d.duration) || 84;
@@ -2626,10 +2643,10 @@ function generatePDF() {
               widths: ['*', '*'],
               body: [
                 [{ text: 'Caractéristique', bold: true, fillColor: '#1A3A2A', color: '#F9A825', fontSize: 10 }, { text: 'Valeur', bold: true, fillColor: '#1A3A2A', color: '#F9A825', fontSize: 10, alignment: 'right' }],
-                ['Surface toiture mesurée', { text: surfMes.toLocaleString('fr-FR') + ' m²', alignment: 'right', bold: true }],
-                ['Surface utile disponible', { text: surfUtile.toLocaleString('fr-FR') + ' m²', alignment: 'right', bold: true }],
-                ['Panneaux installés (projet)', { text: panNec + ' panneaux', alignment: 'right', bold: true }],
-                ['Surface nécessaire (projet)', { text: surfNec.toLocaleString('fr-FR') + ' m²', alignment: 'right', bold: true }],
+                ['Surface toiture mesuree', { text: surfMes.toLocaleString('fr-FR') + ' m2', alignment: 'right', bold: true }],
+                ['Surface utile disponible', { text: surfUtile.toLocaleString('fr-FR') + ' m2', alignment: 'right', bold: true }],
+                ['Panneaux installes (projet)', { text: panNec + ' panneaux', alignment: 'right', bold: true }],
+                ['Surface necessaire (projet)', { text: surfNec.toLocaleString('fr-FR') + ' m2', alignment: 'right', bold: true }],
                 ['Panneaux max possibles', { text: panMax + ' panneaux', alignment: 'right', bold: true }],
                 ['Puissance installée', { text: (d.power||'--') + ' kWc', alignment: 'right', bold: true, color: '#2E7D32' }],
               ]
@@ -2659,7 +2676,7 @@ async function generatePPTX() {
   showToast('Generation de la presentation en cours...', 8000);
   try {
     const d = getData();
-    const gains30 = simData.length ? (simData[0].lisse ? simData[0].gainsNets30 : simData[29].cum) : 0;
+    const gains30 = simData.length ? (simData[0].lisse ? simData[0].gainsNets30 : simData[simData.length - 1].cum) : 0;
     const modeLabel = simMode === 'lisse' ? 'Lisse 30 ans' : 'Reel an/an';
     const gainMoyAn = Math.round(gains30 / 30);
     const gainMoyMois = Math.round(gains30 / 30 / 12);
@@ -3402,7 +3419,7 @@ window._roofImageB64 = null;
 
 function initRoofMap() {
   if (roofMap) return;
-  roofMap = L.map('roofMap', { center: [46.6, 2.5], zoom: 6, doubleClickZoom: false, maxZoom: 21 });
+  roofMap = L.map('roofMap', { center: [46.6, 2.5], zoom: 6, doubleClickZoom: false, maxZoom: 21, preferCanvas: true, renderer: L.canvas() });
 
   // Orthophotos IGN (flux public data.geopf.fr, sans clé depuis 2024)
   // Orthophotos IGN via le flux public data.geopf.fr (format chemin REST)
@@ -3447,7 +3464,7 @@ function redrawPolygon() {
 function finalizePolygon() {
   if (roofPolygon) roofMap.removeLayer(roofPolygon);
   if (roofTempLine) { roofMap.removeLayer(roofTempLine); roofTempLine = null; }
-  roofPolygon = L.polygon(roofPoints, { color: '#2E7D32', weight: 3, fillColor: '#66BB6A', fillOpacity: 0.35 }).addTo(roofMap);
+  roofPolygon = L.polygon(roofPoints, { color: '#F9A825', weight: 4, fillColor: '#66BB6A', fillOpacity: 0.35, renderer: L.canvas() }).addTo(roofMap);
 
   // Calcul de la surface (formule de Shoelace sur coordonnées projetées)
   var surface = computePolygonArea(roofPoints);
@@ -3607,7 +3624,7 @@ function captureMap() {
   showToast('Capture de la vue satellite...', 5000);
   // Laisser les tuiles se charger
   setTimeout(function() {
-    html2canvas(document.getElementById('roofMap'), { useCORS: true, allowTaint: false, logging: false }).then(function(canvas) {
+    html2canvas(document.getElementById('roofMap'), { useCORS: true, allowTaint: true, logging: false, scale: 1.5 }).then(function(canvas) {
       window._roofImageB64 = canvas.toDataURL('image/jpeg', 0.85);
       document.getElementById('captureStatus').style.display = 'block';
       showToast('Vue satellite ajoutée au dossier !');
@@ -3619,6 +3636,30 @@ function captureMap() {
   }, 800);
 }
 
+
+
+// ─── HELPER PVGIS (avec proxies CORS multiples) ───────────────────────────────
+async function fetchPVGIS(pvgisUrl) {
+  const proxies = [
+    'https://corsproxy.io/?url=' + encodeURIComponent(pvgisUrl),
+    'https://api.allorigins.win/raw?url=' + encodeURIComponent(pvgisUrl),
+    'https://corsproxy.io/?' + encodeURIComponent(pvgisUrl),
+    pvgisUrl // tentative directe en dernier
+  ];
+  for (const url of proxies) {
+    try {
+      const resp = await Promise.race([
+        fetch(url),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 8000))
+      ]);
+      if (resp && resp.ok) {
+        const json = await resp.json();
+        if (json && json.outputs) return json;
+      }
+    } catch(e) { /* essayer le proxy suivant */ }
+  }
+  return null;
+}
 
 // ─── ESTIMATION PRODUCTION VIA PVGIS ──────────────────────────────────────────
 async function estimateProductionPVGIS() {
@@ -3665,22 +3706,9 @@ async function estimateProductionPVGIS() {
     // PVGIS PVcalc : production annuelle pour installation fixe
     const pvgisParams = 'lat=' + lat + '&lon=' + lon + '&peakpower=' + power + '&loss=14&angle=' + inclination + '&aspect=' + azimuth + '&outputformat=json&pvtechchoice=crystSi&mountingplace=building';
     const pvgisUrl = 'https://re.jrc.ec.europa.eu/api/v5_2/PVcalc?' + pvgisParams;
-    const corsProxy = 'https://corsproxy.io/?' + encodeURIComponent(pvgisUrl);
-
-    let resp = null;
-    try {
-      resp = await Promise.race([fetch(pvgisUrl), new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),5000))]);
-      if (!resp.ok) resp = null;
-    } catch(e) { resp = null; }
-
-    if (!resp) {
-      showToast('Connexion directe bloquée, essai via proxy...');
-      resp = await fetch(corsProxy);
-    }
-    if (!resp || !resp.ok) throw new Error('PVGIS inaccessible');
-
-    const json = await resp.json();
-    const prodAnnuelle = Math.round(json.outputs.totals.fixed.E_y); // kWh/an production réelle (100%)
+    const json = await fetchPVGIS(pvgisUrl);
+    if (!json || !json.outputs) throw new Error('PVGIS inaccessible');
+    const prodAnnuelle = Math.round(json.outputs.totals.fixed.E_y);
 
     // Renseigner les champs :
     // - prodReal = production 100% PVGIS
@@ -3776,14 +3804,8 @@ async function suggestPower() {
       // PVGIS pour 1 kWc -> production par kWc
       const params = 'lat=' + lat + '&lon=' + lon + '&peakpower=1&loss=14&angle=' + inclination + '&aspect=' + azimuth + '&outputformat=json&pvtechchoice=crystSi&mountingplace=building';
       const url = 'https://re.jrc.ec.europa.eu/api/v5_2/PVcalc?' + params;
-      let resp = null;
-      try {
-        resp = await Promise.race([fetch(url), new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),5000))]);
-        if (!resp.ok) resp = null;
-      } catch(e) { resp = null; }
-      if (!resp) resp = await fetch('https://corsproxy.io/?' + encodeURIComponent(url));
-      if (resp && resp.ok) {
-        const json = await resp.json();
+      const json = await fetchPVGIS(url);
+      if (json && json.outputs) {
         prodParKWc = Math.round(json.outputs.totals.fixed.E_y);
       }
     } catch(e) { /* garde fallback */ }
