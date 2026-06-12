@@ -1165,58 +1165,32 @@ function extractAutoCalSol(text) {
     }
   };
 
-  // -- Nom client + Adresse --
-  const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+  // -- Nom client + Adresse (format AutoCalsol réel) --
+  // Format: "...Informations principales  [ADRESSE] [GPS lat N, lon E]  [puissance] kWc..."
+  // L'adresse est entre "Informations principales" et les coordonnées GPS
 
-  // Patterns AutoCalSol pour le nom du client
-  // Format 1 : "Client : NOM" ou "Client: NOM"
-  const clientLabelMatch = text.match(/Client\s*:\s*([^\n]{3,60})/i);
-  // Format 2 : "Maître d'ouvrage : NOM" ou "Bénéficiaire : NOM"
-  const maitreMatch = text.match(/(?:Ma[ît]+re\s+d.ouvrage|B[eé]n[eé]ficiaire|Propri[eé]taire|Commanditaire)\s*:\s*([^\n]{3,60})/i);
-  // Format 3 : première ligne significative (fallback)
-  let nameFromLines = '';
-  for (const line of lines.slice(0, 15)) {
-    if (line.length >= 3 && line.length <= 60
-      && !/^\d{2}[\/\-]\d{2}[\/\-]\d{4}$/.test(line)
-      && !/autocalsol|ines|photovolt|etude|rapport|pvgis|arnaud|energies|cedi|logiciel|version|page/i.test(line)
-      && !/^[0-9]/.test(line)
-      && !/^[A-Z]{1,3}$/.test(line)) {
-      nameFromLines = line;
-      break;
-    }
+  // Extraire l'adresse : texte avec code postal 5 chiffres, AVANT le GPS
+  // Pattern précis : numéro + rue + code postal 5 chiffres + ville, suivi de GPS
+  const adrGpsMatch = text.match(/(\d{1,4}[\s,]?[A-Za-zÀ-ÿ'.\s-]{3,60}\s\d{5}\s+[A-Za-zÀ-ÿ'.\s-]{2,40}?)\s+\d{1,2}[.,]\d{4,7}\s*[NS]/i);
+  let clientAddress = '';
+  if (adrGpsMatch) {
+    clientAddress = adrGpsMatch[1].trim().replace(/\s+/g, ' ');
+  } else {
+    // Fallback : chercher une portion avec code postal sans le GPS qui suit
+    const cpOnly = text.match(/(\d{1,4}\s+[A-Za-zÀ-ÿ'.\s-]{5,60}\s\d{5}\s+[A-Za-zÀ-ÿ-]{2,40})/);
+    if (cpOnly) clientAddress = cpOnly[1].trim().replace(/\s+/g, ' ');
+  }
+  if (clientAddress && clientAddress.length < 100) {
+    set('clientAddress', clientAddress);
   }
 
-  const clientName = (clientLabelMatch && clientLabelMatch[1].trim())
-    || (maitreMatch && maitreMatch[1].trim())
-    || nameFromLines;
-  if (clientName) set('clientName', clientName);
-
-  // -- Adresse client --
-  // Format 1 : "Adresse : X" ou "Adresse du site : X"
-  const adresseMatch = text.match(/Adresse(?:\s+du\s+site)?\s*:\s*([^\n]{5,100})/i);
-  // Format 2 : ligne avec code postal français (5 chiffres)
-  const cpMatch = text.match(/([^\n]*\d{5}[^\n]*)/);
-  // Format 3 : ligne avec numéro + rue après le nom du client
-  let adresseFromLines = '';
-  if (clientName) {
-    const nameIdx = text.indexOf(clientName);
-    if (nameIdx !== -1) {
-      const afterName = text.slice(nameIdx + clientName.length, nameIdx + clientName.length + 300);
-      const afterLines = afterName.split('\n').map(l => l.trim()).filter(l => l.length > 3);
-      for (const l of afterLines.slice(0, 5)) {
-        if (/\d/.test(l) && l.length > 5 && l.length < 100
-          && !/kWc|kWh|MWh|EUR|%|°|irrad|pvgis/i.test(l)) {
-          adresseFromLines = l;
-          break;
-        }
-      }
-    }
+  // Nom client : généralement avant "Etude photovoltaïque" ou c'est le titre principal
+  // Format AutoCalsol : le nom est souvent en en-tête, ou absent de la page 1 technique
+  // On cherche un nom avant "Etude photovoltaïque" ou après un label
+  const nomMatch = text.match(/^([A-ZÀ-Ÿ][A-Za-zÀ-ÿ'.\s&-]{2,50}?)\s+(?:Etude|Rapport|Aperçu)/);
+  if (nomMatch && nomMatch[1].trim().length > 2 && !/photovolta|aperçu|informations/i.test(nomMatch[1])) {
+    set('clientName', nomMatch[1].trim());
   }
-
-  const clientAddress = (adresseMatch && adresseMatch[1].trim())
-    || adresseFromLines
-    || (cpMatch && cpMatch[1].trim());
-  if (clientAddress) set('clientAddress', clientAddress);
 
   // Si GPS disponible et pas d'adresse, faire reverse geocoding
   // (sera fait après extraction GPS plus bas)
@@ -3142,17 +3116,17 @@ function generateMaintenance() {
       const dureeAns = finMode === 'mensual' ? Math.ceil((parseInt(d.duration)||84)/12) : 8;
 
       if (!window.docx) {
-      // Tentative de chargement dynamique
+      // Attendre que docx soit chargé (chargement en arrière-plan au démarrage)
       await new Promise((resolve, reject) => {
-        const s = document.createElement('script');
-        s.src = 'https://unpkg.com/docx@8.5.0/build/index.js';
-        s.onload = resolve;
-        s.onerror = reject;
-        document.head.appendChild(s);
+        let attempts = 0;
+        const check = setInterval(() => {
+          attempts++;
+          if (window.docx) { clearInterval(check); resolve(); }
+          else if (attempts > 80) { clearInterval(check); reject(new Error('docx non chargé - vérifiez votre connexion')); }
+        }, 100);
       });
-      await new Promise(r => setTimeout(r, 500));
     }
-    if (!window.docx) throw new Error('Librairie docx non chargee - rechargez la page');
+    if (!window.docx) throw new Error('Librairie docx non chargee');
       const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
         AlignmentType, HeadingLevel, BorderStyle, WidthType, ShadingType } = window.docx;
 
@@ -3351,10 +3325,12 @@ function setupAddressAutocomplete() {
 
   input.addEventListener('input', function() {
     clearTimeout(debounceTimer);
-    const q = this.value.trim();
+    let q = this.value.trim();
+    // Limiter à 100 caractères (l'API refuse les requêtes trop longues)
+    if (q.length > 100) q = q.slice(0, 100);
     if (q.length < 4) { dropdown.style.display = 'none'; return; }
     debounceTimer = setTimeout(() => {
-      fetch('https://api-adresse.data.gouv.fr/search/?q=' + encodeURIComponent(q) + '&limit=6')
+      fetch('https://api-adresse.data.gouv.fr/search/?q=' + encodeURIComponent(q.slice(0,100)) + '&limit=6')
         .then(r => r.json())
         .then(data => {
           dropdown.innerHTML = '';
@@ -3409,11 +3385,22 @@ function initRoofMap() {
   roofMap = L.map('roofMap', { center: [46.6, 2.5], zoom: 6 });
 
   // Orthophotos IGN (flux public data.geopf.fr, sans clé depuis 2024)
-  L.tileLayer('https://data.geopf.fr/wmts?LAYER=ORTHOIMAGERY.ORTHOPHOTOS&EXCEPTIONS=text/xml&FORMAT=image/jpeg&SERVICE=WMTS&VERSION=1.0.0&REQUEST=GetTile&STYLE=normal&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}', {
+  // Orthophotos IGN via le flux public data.geopf.fr (format chemin REST)
+  L.tileLayer('https://data.geopf.fr/wmts?SERVICE=WMTS&VERSION=1.0.0&REQUEST=GetTile&LAYER=ORTHOIMAGERY.ORTHOPHOTOS&STYLE=normal&FORMAT=image/jpeg&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}', {
     attribution: 'IGN-F/Géoportail',
-    maxZoom: 21,
+    maxZoom: 19,
+    minZoom: 6,
     tileSize: 256
   }).addTo(roofMap);
+
+  // Fallback : couche satellite Esri si IGN indisponible à ce zoom
+  // Couche satellite Esri haute résolution (zoom jusqu'à 21, pour mesure précise des toits)
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: 'Esri World Imagery',
+    maxZoom: 21,
+    maxNativeZoom: 19
+  }).addTo(roofMap);
+  roofMap._ignLayer = true;
 
   // Clic = ajouter un point au polygone
   roofMap.on('click', function(e) {
@@ -3560,7 +3547,7 @@ function locateRoof() {
   if (gps) {
     var parts = gps.replace(/[NSEWnsew]/g,' ').replace(/,/g,'.').trim().split(/[\s;]+/).map(parseFloat).filter(function(n){return !isNaN(n);});
     if (parts.length >= 2) {
-      roofMap.setView([parts[0], parts[1]], 20);
+      roofMap.setView([parts[0], parts[1]], 20); roofMap.setMaxZoom(21);
       showToast('Toit localisé via GPS');
       return;
     }
@@ -3571,7 +3558,7 @@ function locateRoof() {
       .then(function(data){
         if (data.features && data.features.length > 0) {
           var c = data.features[0].geometry.coordinates;
-          roofMap.setView([c[1], c[0]], 20);
+          roofMap.setView([c[1], c[0]], 20); roofMap.setMaxZoom(21);
           // GPS de l'adresse PRIORITAIRE (centré sur le bâtiment, plus précis que le PDF)
           var gpsStr = c[1].toFixed(5) + ', ' + c[0].toFixed(5);
           var gpsEl = document.getElementById('gpsCoords');
