@@ -8,7 +8,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pptxgenjs/3.12.0/pptxgen.bundle.js" onerror="this.onerror=null;var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js';document.head.appendChild(s);"></script>
+<script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -569,7 +569,7 @@ td:first-child { text-align: center; font-weight: 600; color: var(--gray); }
         </div>
         <div class="field-group">
           <label class="field-label">Tarif revente surplus (€/kWh)</label>
-          <input class="field-input" id="surplusPrice" placeholder="0.069" type="number" step="0.001">
+          <input class="field-input" id="surplusPrice" placeholder="0.069" type="number" step="0.001" oninput="syncSurplus('surplusPrice')">
         </div>
         <div class="field-group">
           <label class="field-label">Surface PV (m²)</label>
@@ -931,7 +931,7 @@ td:first-child { text-align: center; font-weight: 600; color: var(--gray); }
         </div>
         <div class="field-group">
           <label class="field-label">Tarif revente surplus (€/kWh)</label>
-          <input class="field-input" id="simSurplus" value="0.069" type="number" step="0.001" oninput="runSim()">
+          <input class="field-input" id="simSurplus" value="0.069" type="number" step="0.001" oninput="syncSurplus('simSurplus')">
         </div>
       </div>
 
@@ -1499,6 +1499,22 @@ function toggleAdvanced() {
   arrow.textContent = isOpen ? '>' : 'v';
 }
 
+
+// Synchroniser les 3 champs de tarif revente
+function syncSurplus(source) {
+  let v;
+  if (source === 'surplusPrice') v = parseFloat(document.getElementById('surplusPrice').value);
+  else if (source === 'simSurplus') v = parseFloat(document.getElementById('simSurplus').value);
+  else if (source === 'slider') v = parseFloat(document.getElementById('slSurplus').value);
+  if (isNaN(v)) return;
+  // Mettre à jour tous les champs
+  const sp = document.getElementById('surplusPrice'); if (sp && source !== 'surplusPrice') sp.value = v;
+  const ss = document.getElementById('simSurplus'); if (ss && source !== 'simSurplus') ss.value = v;
+  const sl = document.getElementById('slSurplus'); if (sl && source !== 'slider') sl.value = v;
+  const lbl = document.getElementById('lblSurplus'); if (lbl) lbl.textContent = v.toFixed(3).replace('.', ',');
+  runSim();
+}
+
 function updateSlider(type) {
   if (type === 'tarif') {
     const v = parseFloat(document.getElementById('slTarif').value);
@@ -1512,10 +1528,8 @@ function updateSlider(type) {
     document.getElementById('lblMensual').textContent = v.toFixed(0);
     document.getElementById('monthly').value = v;
   } else if (type === 'surplus') {
-    const v = parseFloat(document.getElementById('slSurplus').value);
-    document.getElementById('lblSurplus').textContent = v.toFixed(3).replace('.', ',');
-    document.getElementById('simSurplus').value = v;
-    document.getElementById('surplusPrice').value = v;
+    syncSurplus('slider');
+    return;
   }
   runSim();
 }
@@ -1749,7 +1763,7 @@ function renderTable() {
   if (simMode === 'lisse') {
     // Pas de tableau en mode lissé
     thead.innerHTML = '';
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--gray);padding:1.5rem;font-style:italic">Mode lissé -- basculez en mode Réel pour le détail année par année.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--gray);padding:1.5rem;font-style:italic">Mode lissé -- basculez en mode Réel pour le détail année par année.</td></tr>';
     return;
   }
 
@@ -1776,12 +1790,14 @@ function renderTable() {
     if (isRevente) {
       // Revente totale : Tarif réseau non pertinent, on affiche tarif revente fixe
       thead.innerHTML = `<tr>
-        <th>An</th><th>Production (kWh)</th><th>Tarif revente (EUR/kWh)</th><th>Revenus revente</th><th>Financement</th><th>Gain net</th><th>Cumulé</th>
+        <th>An</th><th>Production (kWh)</th><th>Tarif revente (EUR/kWh)</th><th>Revenus revente</th><th>Financement</th><th>Gain net</th><th>Cumulé</th><th>Rentabilité</th>
       </tr>`;
       tbody.innerHTML = simData.map(d => {
         const cumCls = d.cum < 0 ? 'cum-neg' : 'cum-pos';
         const netCls = d.net < 0 ? 'td-neg' : d.net === 0 ? 'td-zero' : 'td-pos';
         const cumValCls = d.cum < 0 ? 'td-neg' : 'td-pos';
+        const invest = (parseFloat(document.getElementById('cashPrice').value) || (parseFloat(document.getElementById('monthly').value)||0)*(parseInt(document.getElementById('duration').value)||0)) || 0;
+        const rentab = invest > 0 ? (d.rev / invest * 100).toFixed(1) + '%' : '--';
         return `<tr class="${cumCls}">
           <td>${d.y}</td>
           <td>${d.prod.toLocaleString('fr-FR')}</td>
@@ -1790,17 +1806,20 @@ function renderTable() {
           <td>${d.fin > 0 ? fmt(d.fin) + ' EUR' : '--'}</td>
           <td class="${netCls}">${fmtSign(d.net)} EUR</td>
           <td class="${cumValCls}">${fmtSign(d.cum)} EUR</td>
+          <td style="color:var(--gold);font-weight:600">${rentab}</td>
         </tr>`;
       }).join('');
     } else {
       // Autoconsommation : afficher tarif réseau + détail autoconso/surplus
       thead.innerHTML = `<tr>
-        <th>An</th><th>Production (kWh)</th><th>Tarif réseau (EUR/kWh)</th><th>Revenus (autoconso + surplus)</th><th>Financement</th><th>Gain net</th><th>Cumulé</th>
+        <th>An</th><th>Production (kWh)</th><th>Tarif réseau (EUR/kWh)</th><th>Revenus (autoconso + surplus)</th><th>Financement</th><th>Gain net</th><th>Cumulé</th><th>Rentabilité</th>
       </tr>`;
       tbody.innerHTML = simData.map(d => {
         const cumCls = d.cum < 0 ? 'cum-neg' : 'cum-pos';
         const netCls = d.net < 0 ? 'td-neg' : d.net === 0 ? 'td-zero' : 'td-pos';
         const cumValCls = d.cum < 0 ? 'td-neg' : 'td-pos';
+        const investA = (parseFloat(document.getElementById('cashPrice').value) || (parseFloat(document.getElementById('monthly').value)||0)*(parseInt(document.getElementById('duration').value)||0)) || 0;
+        const rentabA = investA > 0 ? (d.rev / investA * 100).toFixed(1) + '%' : '--';
         return `<tr class="${cumCls}">
           <td>${d.y}</td>
           <td>${d.prod.toLocaleString('fr-FR')}</td>
@@ -1809,6 +1828,7 @@ function renderTable() {
           <td>${d.fin > 0 ? fmt(d.fin) + ' EUR' : '--'}</td>
           <td class="${netCls}">${fmtSign(d.net)} EUR</td>
           <td class="${cumValCls}">${fmtSign(d.cum)} EUR</td>
+          <td style="color:var(--gold);font-weight:600">${rentabA}</td>
         </tr>`;
       }).join('');
     }
@@ -1921,13 +1941,22 @@ async function generatePPTX() {
     const retour = simData.length && !simData[0].lisse ? (simData.find(x=>x.cum>=0)||{y:'?'}).y : 'An 3';
     const modeLabel = simMode === 'lisse' ? 'Lisse ' + (simData.length||30) + ' ans' : 'Reel an/an';
 
-    // Résoudre la référence PptxGenJS (le bundle peut l'exposer différemment)
-    const PPTX = window.PptxGenJS || window.pptxgen || (typeof PptxGenJS !== 'undefined' ? PptxGenJS : null);
-    if (!PPTX) {
+    // Attendre que PptxGenJS soit chargé
+    if (!window.PptxGenJS) {
+      await new Promise((resolve, reject) => {
+        let attempts = 0;
+        const check = setInterval(() => {
+          attempts++;
+          if (window.PptxGenJS) { clearInterval(check); resolve(); }
+          else if (attempts > 80) { clearInterval(check); reject(new Error('PptxGenJS timeout')); }
+        }, 100);
+      });
+    }
+    if (!window.PptxGenJS) {
       showToast('Librairie PPTX non chargée — rechargez la page');
       throw new Error('PptxGenJS non disponible');
     }
-    const pres = new PPTX();
+    const pres = new window.PptxGenJS();
     pres.layout = 'LAYOUT_16x9';
 
     const C = { dark:'1A3A2A', green:'2E7D32', lime:'66BB6A', gold:'F9A825', white:'FFFFFF', gray:'546E7A', lgray:'B0BEC5', red:'C62828' };
@@ -1942,30 +1971,110 @@ async function generatePPTX() {
     s1.addText((d.power||'?')+' kWc -- '+(d.clientName||'Client'), {x:0.5,y:1.9,w:7.5,h:0.75,fontSize:32,bold:true,color:C.gold,fontFace:'Calibri'});
     s1.addText('Etude economique -- '+modeLabel+'\nInflation '+document.getElementById('slInflation').value+' %/an - Production 100 % an 1 - Degradation 0,4 %/an', {x:0.5,y:2.75,w:8,h:0.8,fontSize:13,color:C.lgray,italic:true,fontFace:'Calibri'});
     s1.addShape(pres.shapes.RECTANGLE, {x:0,y:4.35,w:10,h:1.27,fill:{color:C.green},line:{color:C.green}});
-    const stats1 = [{v:(d.power||'?')+' kWc',l:'Puissance'},{v:(d.panels||'?')+' panneaux',l:'Francilienne 500 W'},{v:fmt(parseInt(d.prodReal||0))+' kWh',l:'Production an 1'},{v:'~'+fmt(Math.round(gains30/1000))+'k EUR',l:'Gains nets '+(simData.length||30)+' ans'}];
-    stats1.forEach((st,i)=>{ const x=0.5+i*2.45; s1.addText(st.v,{x,y:4.42,w:2.2,h:0.5,fontSize:18,bold:true,color:C.gold,align:'center',fontFace:'Calibri'}); s1.addText(st.l,{x,y:4.88,w:2.2,h:0.3,fontSize:9,color:C.white,align:'center',fontFace:'Calibri'}); });
+    // Calculs pour le bandeau : puissance, panneaux, surface nécessaire
+    const nbPanneaux = parseInt(d.panels) || Math.round((parseFloat(d.power)||0) / 0.5);
+    const surfaceNec = Math.round(nbPanneaux * 2.2);
+    const stats1 = [
+      {v:(d.power||'?')+' kWc',l:'Puissance crête'},
+      {v:nbPanneaux+' panneaux',l:'Francilienne 500 Wc'},
+      {v:surfaceNec.toLocaleString('fr-FR')+' m²',l:'Surface nécessaire'},
+      {v:fmt(parseInt(d.prodReal||d.prodStudy||0))+' kWh',l:'Production an 1'}
+    ];
+    stats1.forEach((st,i)=>{ const x=0.5+i*2.45; s1.addText(st.v,{x,y:4.42,w:2.2,h:0.5,fontSize:17,bold:true,color:C.gold,align:'center',fontFace:'Calibri'}); s1.addText(st.l,{x,y:4.88,w:2.2,h:0.3,fontSize:9,color:C.white,align:'center',fontFace:'Calibri'}); });
 
     // SLIDE 2 -- HYPOTHESES
     const s2 = pres.addSlide();
     s2.addShape(pres.shapes.RECTANGLE, {x:0,y:0,w:10,h:5.625,fill:{color:'F4FAF5'},line:{color:'F4FAF5'}});
     s2.addShape(pres.shapes.RECTANGLE, {x:0,y:0,w:10,h:0.75,fill:{color:C.dark},line:{color:C.dark}});
     s2.addText('Hypotheses de l etude economique', {x:0.4,y:0,w:9,h:0.75,fontSize:22,bold:true,color:C.white,valign:'middle',fontFace:'Calibri'});
-    const hyps = [['Production an 1','42 946 kWh (base 100%)','Tarif depart',d.elecPrice+' EUR/kWh','Financement',d.monthly+' EUR/mois HT'],['Degradation','-0,4 %/an','Inflation','+'+document.getElementById('slInflation').value+' %/an','Duree',Math.ceil((parseInt(d.duration)||84)/12)+' ans'],['Autoconsommation',(d.autoconsoRate||'--')+'%','Blocage tarifaire',(d.priceLock||0)+' ans','Maintenance','Incluse mensualite']];
-    hyps.forEach((row,ri)=>{ row.forEach((cell,ci)=>{ const isLabel=ci%2===0; s2.addShape(pres.shapes.RECTANGLE,{x:0.3+Math.floor(ci/2)*3.25,y:0.95+ri*1.4,w:1.4,h:1.2,fill:{color:isLabel?C.dark:C.white},line:{color:C.lgray,width:0.5}}); s2.addText(cell,{x:0.35+Math.floor(ci/2)*3.25,y:0.95+ri*1.4,w:1.3,h:1.2,fontSize:11,bold:isLabel,color:isLabel?C.gold:C.dark,align:'center',valign:'middle',fontFace:'Calibri'}); }); });
+    // Données réelles de l'étude
+    const isReventeS2 = document.getElementById('projectType') && document.getElementById('projectType').value === 'revente';
+    const isCashS2 = finMode === 'cash';
+    const prodS2 = parseInt(d.prodReal || d.prodStudy || 0);
+    const dureeEtudeS2 = simData.length || parseInt(document.getElementById('studyDuration').value) || 20;
+    const finYearsS2 = isCashS2 ? 0 : Math.ceil((parseInt(d.duration)||84)/12);
+
+    // Construire les hypothèses pertinentes selon le contexte
+    const hypList = [
+      ['Production annuelle', fmt(prodS2) + ' kWh'],
+      ['Type de projet', isReventeS2 ? 'Revente totale' : 'Autoconsommation'],
+      ['Tarif ' + (isReventeS2 ? 'revente' : 'électricité'), (isReventeS2 ? (d.surplusPrice||'0.069') : d.elecPrice) + ' EUR/kWh'],
+      ['Mode de paiement', isCashS2 ? 'Comptant (' + fmt(parseFloat(d.cashPrice)||0) + ' EUR HT)' : d.monthly + ' EUR/mois x ' + finYearsS2 + ' ans'],
+      ['Durée de l\'étude', dureeEtudeS2 + ' ans'],
+      ['Dégradation panneaux', '-0,4 %/an'],
+      ['Inflation tarif', '+' + document.getElementById('slInflation').value + ' %/an'],
+      ['Maintenance', isCashS2 ? 'Contrat séparé' : 'Incluse dans mensualité'],
+    ];
+    if (!isReventeS2) {
+      hypList.splice(3, 0, ['Autoconsommation', (d.autoconsoRate||'--') + ' %']);
+    }
+
+    // Affichage en 2 colonnes de cartes
+    hypList.forEach((row, i) => {
+      const col = Math.floor(i / 4);
+      const rowIdx = i % 4;
+      const x = 0.4 + col * 4.7;
+      const y = 1.05 + rowIdx * 1.05;
+      s2.addShape(pres.shapes.ROUNDED_RECTANGLE, {x, y, w:4.4, h:0.9, fill:{color:C.white}, line:{color:C.lgray, width:0.5}, rectRadius:0.05});
+      s2.addText(row[0], {x:x+0.2, y:y+0.12, w:4.0, h:0.3, fontSize:11, bold:true, color:C.green, fontFace:'Calibri'});
+      s2.addText(row[1], {x:x+0.2, y:y+0.42, w:4.0, h:0.35, fontSize:14, bold:true, color:C.dark, fontFace:'Calibri'});
+    });
 
     // SLIDE 3 -- RESULTATS AN 1
     const s3 = pres.addSlide();
     s3.addShape(pres.shapes.RECTANGLE, {x:0,y:0,w:10,h:5.625,fill:{color:'F4FAF5'},line:{color:'F4FAF5'}});
     s3.addShape(pres.shapes.RECTANGLE, {x:0,y:0,w:10,h:0.75,fill:{color:C.dark},line:{color:C.dark}});
     s3.addText('Resultat annee 1', {x:0.4,y:0,w:9,h:0.75,fontSize:24,bold:true,color:C.white,valign:'middle',fontFace:'Calibri'});
-    s3.addShape(pres.shapes.ROUNDED_RECTANGLE, {x:0.4,y:0.95,w:4.0,h:2.2,fill:{color:C.dark},line:{color:C.dark},rectRadius:0.1});
-    s3.addText('Resultat net\nannee 1', {x:0.5,y:1.05,w:3.8,h:0.6,fontSize:12,color:C.lgray,align:'center',fontFace:'Calibri'});
+    s3.addShape(pres.shapes.ROUNDED_RECTANGLE, {x:0.4,y:0.95,w:4.0,h:2.1,fill:{color:C.dark},line:{color:C.dark},rectRadius:0.1});
+    s3.addText('Résultat net année 1', {x:0.5,y:1.05,w:3.8,h:0.4,fontSize:12,color:C.lgray,align:'center',fontFace:'Calibri'});
     const an1Val = simData.length && simData[0].net ? Math.round(simData[0].net/12) : an1Net;
-    s3.addText((an1Val>=0?'+':'')+an1Val+' EUR/mois', {x:0.5,y:1.6,w:3.8,h:0.9,fontSize:36,bold:true,color:C.gold,align:'center',fontFace:'Calibri'});
-    s3.addText('soit '+(simData[0]&&simData[0].net?fmtSign(simData[0].net):fmtSign(an1Val*12))+' EUR/an', {x:0.5,y:2.48,w:3.8,h:0.4,fontSize:12,color:C.lime,align:'center',italic:true,fontFace:'Calibri'});
-    // KPIs droite
-    const kpis3 = [{l:'Deficit cumule max',v:(defMax<0?fmtSign(defMax):'+0')+' EUR'},{l:'Retour positif cumule',v:'An '+retour},{l:'Gains nets '+(simData.length||30)+' ans',v:'~'+fmt(Math.round(gains30/1000))+'k EUR'}];
-    kpis3.forEach((k,i)=>{ s3.addShape(pres.shapes.RECTANGLE,{x:4.8,y:0.95+i*1.35,w:4.8,h:1.2,fill:{color:C.dark},line:{color:C.gold,width:0.8}}); s3.addText(k.l,{x:4.9,y:1.0+i*1.35,w:4.6,h:0.45,fontSize:10,color:C.lgray,fontFace:'Calibri'}); s3.addText(k.v,{x:4.9,y:1.42+i*1.35,w:4.6,h:0.6,fontSize:22,bold:true,color:C.gold,fontFace:'Calibri'}); });
+    s3.addText((an1Val>=0?'+':'')+an1Val+' EUR/mois', {x:0.5,y:1.55,w:3.8,h:0.9,fontSize:34,bold:true,color:C.gold,align:'center',fontFace:'Calibri'});
+    s3.addText('soit '+(simData[0]&&simData[0].net?fmtSign(simData[0].net):fmtSign(an1Val*12))+' EUR/an', {x:0.5,y:2.45,w:3.8,h:0.4,fontSize:12,color:C.lime,align:'center',italic:true,fontFace:'Calibri'});
+    // === Données détaillées du projet (remplace déficit/retour) ===
+    const isReventeS3 = document.getElementById('projectType') && document.getElementById('projectType').value === 'revente';
+    const investS3 = finMode === 'cash' ? (parseFloat(d.cashPrice)||0) : (parseFloat(d.monthly)||0)*(parseInt(d.duration)||0);
+    const finYearsS3 = finMode === 'cash' ? 0 : Math.ceil((parseInt(d.duration)||84)/12);
+    const dureeS3 = simData.length || 20;
+
+    // Production totale sur la durée (avec dégradation)
+    const prodTotale = simData.reduce((s,x)=>s+x.prod, 0);
+    // Prix du kWh solaire = LCOE = investissement / production totale
+    const prixKWhSolaire = prodTotale > 0 ? (investS3 / prodTotale).toFixed(4) : '--';
+
+    // Cash-flow moyen pendant le financement et après
+    const cfPendant = finYearsS3 > 0 ? Math.round(simData.filter(x=>x.fin>0).reduce((s,x)=>s+x.net,0) / finYearsS3 / 12) : Math.round(simData[0].net/12);
+    const apresF = simData.filter(x=>x.fin===0);
+    const cfApres = apresF.length > 0 ? Math.round(apresF.reduce((s,x)=>s+x.net,0) / apresF.length / 12) : cfPendant;
+
+    // Bloc gauche : autoconsommation / surplus (ou revente totale)
+    s3.addShape(pres.shapes.ROUNDED_RECTANGLE, {x:4.8,y:0.95,w:4.8,h:1.0,fill:{color:C.white},line:{color:C.lgray,width:0.5},rectRadius:0.05});
+    if (isReventeS3) {
+      s3.addText('Revente totale', {x:4.95,y:1.05,w:4.5,h:0.35,fontSize:12,bold:true,color:C.green,fontFace:'Calibri'});
+      s3.addText('100 % de la production vendue au réseau', {x:4.95,y:1.42,w:4.5,h:0.4,fontSize:13,bold:true,color:C.dark,fontFace:'Calibri'});
+    } else {
+      s3.addText('Répartition de la production', {x:4.95,y:1.05,w:4.5,h:0.35,fontSize:11,bold:true,color:C.green,fontFace:'Calibri'});
+      s3.addText('Autoconso ' + (d.autoconsoRate||'--') + ' %   •   Surplus ' + (100-parseFloat(d.autoconsoRate||0)).toFixed(1) + ' %', {x:4.95,y:1.42,w:4.5,h:0.4,fontSize:13,bold:true,color:C.dark,fontFace:'Calibri'});
+    }
+
+    // Bloc droite : prix du kWh solaire
+    s3.addShape(pres.shapes.ROUNDED_RECTANGLE, {x:4.8,y:2.05,w:4.8,h:1.0,fill:{color:C.dark},line:{color:C.gold,width:0.8},rectRadius:0.05});
+    s3.addText('Prix de revient du kWh solaire', {x:4.95,y:2.15,w:4.5,h:0.35,fontSize:11,color:C.lgray,fontFace:'Calibri'});
+    s3.addText(prixKWhSolaire + ' EUR/kWh', {x:4.95,y:2.5,w:4.5,h:0.45,fontSize:20,bold:true,color:C.gold,fontFace:'Calibri'});
+
+    // Bandeau cash-flow par période (bas)
+    s3.addShape(pres.shapes.RECTANGLE, {x:0,y:3.55,w:10,h:1.55,fill:{color:C.green},line:{color:C.green}});
+    s3.addText('CASH-FLOW MENSUEL MOYEN', {x:0.4,y:3.65,w:9,h:0.35,fontSize:12,bold:true,color:C.white,fontFace:'Calibri'});
+    if (finYearsS3 > 0) {
+      // Pendant et après financement
+      s3.addText((cfPendant>=0?'+':'') + cfPendant + ' EUR/mois', {x:0.5,y:4.05,w:4.4,h:0.6,fontSize:28,bold:true,color:C.white,align:'center',fontFace:'Calibri'});
+      s3.addText('Pendant le financement (' + finYearsS3 + ' ans)', {x:0.5,y:4.7,w:4.4,h:0.3,fontSize:11,color:'D4EDD4',align:'center',fontFace:'Calibri'});
+      s3.addText('+' + cfApres + ' EUR/mois', {x:5.1,y:4.05,w:4.4,h:0.6,fontSize:28,bold:true,color:C.gold,align:'center',fontFace:'Calibri'});
+      s3.addText('Après financement (' + (dureeS3-finYearsS3) + ' ans suivantes)', {x:5.1,y:4.7,w:4.4,h:0.3,fontSize:11,color:'D4EDD4',align:'center',fontFace:'Calibri'});
+    } else {
+      // Comptant : cash-flow constant
+      s3.addText('+' + cfPendant + ' EUR/mois', {x:0.5,y:4.1,w:9,h:0.7,fontSize:34,bold:true,color:C.gold,align:'center',fontFace:'Calibri'});
+      s3.addText('Dès la première année (achat comptant)', {x:0.5,y:4.78,w:9,h:0.3,fontSize:11,color:'D4EDD4',align:'center',fontFace:'Calibri'});
+    }
 
     // SLIDE 4 -- TABLEAU 30 ANS (mode reel uniquement)
     if (simMode === 'reel' && simData.length > 1) {
@@ -1993,7 +2102,7 @@ async function generatePPTX() {
     s5.addText('Synthese & Engagements Arnaud Energies', {x:0.4,y:0,w:9,h:0.75,fontSize:20,bold:true,color:C.white,valign:'middle',fontFace:'Calibri'});
     const kpis5 = [{v:fmtSign(defMax)+' EUR',l:'Deficit cumule max'},{v:'An '+retour,l:'Retour positif cumule'},{v:'~'+fmt(Math.round(gains30/1000))+'k EUR',l:'Gains nets '+(simData.length||30)+' ans'},{v:fmtSign(an1Net)+' EUR/mois',l:'Resultat an 1'}];
     kpis5.forEach((k,i)=>{ const x=0.3+i*2.42; s5.addShape(pres.shapes.RECTANGLE,{x,y:0.95,w:2.2,h:1.5,fill:{color:'FFFFFF',transparency:93},line:{color:C.gold,width:1.5}}); s5.addText(k.v,{x,y:1.03,w:2.2,h:0.7,fontSize:22,bold:true,color:C.gold,align:'center',fontFace:'Calibri'}); s5.addText(k.l,{x,y:1.7,w:2.2,h:0.65,fontSize:9,color:C.white,align:'center',fontFace:'Calibri'}); });
-    const engagements5 = ['Garantie de production : si inferieure de 5 %, panneaux supplementaires a titre gracieux','Maintenance incluse dans la mensualite : nettoyage, controle, interventions sous 48h a 10 jours','Assurance decimale n 037.0012525.S179337 + RC Pro + RGE QualiPV 500 (n QPV/72354)','Installation K2 Systems en surimposition : aucune atteinte a la structure ni a l etancheite'];
+    const engagements5 = ['Garantie de production : si inferieure de 5 %, panneaux supplementaires a titre gracieux','Maintenance incluse dans la mensualite : nettoyage, controle, interventions sous 48h a 10 jours','Assurance decennale n 037.0012525.S179337 + RC Pro + RGE QualiPV 500 (n QPV/72354)','Installation K2 Systems en surimposition : aucune atteinte a la structure ni a l etancheite'];
     engagements5.forEach((e,i)=>{ const ey=2.62+i*0.68; s5.addShape(pres.shapes.RECTANGLE,{x:0.3,y:ey,w:0.3,h:0.5,fill:{color:C.green},line:{color:C.green}}); s5.addText('OK',{x:0.3,y:ey,w:0.3,h:0.5,fontSize:9,bold:true,color:C.white,align:'center',valign:'middle',margin:0}); s5.addText(e,{x:0.7,y:ey,w:9.1,h:0.5,fontSize:10,color:C.white,valign:'middle',fontFace:'Calibri'}); });
     s5.addText('Arnaud Energies -- 54 Avenue Hoche, 75008 Paris -- contact@arnaudenergies.fr -- 01 89 70 63 65', {x:0.3,y:5.35,w:9.4,h:0.2,fontSize:7.5,color:C.lgray,align:'center',italic:true,fontFace:'Calibri'});
 
@@ -2104,7 +2213,7 @@ async function generateDOCX() {
           new Paragraph({heading:HeadingLevel.HEADING_1,children:[new TextRun('ARTICLE 6 -- MAINTENANCE')]}),
           new Paragraph({spacing:{after:160},children:[new TextRun({text:'Les prestations de maintenance font l objet d un Contrat d Entretien et de Maintenance Photovoltaique distinct, conclu entre le Client et C.E.D.I (Arnaud Energies). La signature du present contrat vaut accord du Client pour la conclusion concomitante dudit contrat de maintenance.',font:'Arial',size:22})]}),
           new Paragraph({heading:HeadingLevel.HEADING_1,children:[new TextRun('ARTICLE 7 -- ASSURANCES ET GARANTIES')]}),
-          new Paragraph({spacing:{after:160},children:[new TextRun({text:'Assurance decimale n 037.0012525.S179337 (QBE Insurance Europe). RC Pro incluse. RGE QualiPV 500 n QPV/72354 (valide 31/10/2026). Garantie panneaux 30 ans, onduleurs 10 ans.',font:'Arial',size:22})]}),
+          new Paragraph({spacing:{after:160},children:[new TextRun({text:'Assurance decennale n 037.0012525.S179337 (QBE Insurance Europe). RC Pro incluse. RGE QualiPV 500 n QPV/72354 (valide 31/10/2026). Garantie panneaux 30 ans, onduleurs 10 ans.',font:'Arial',size:22})]}),
           new Paragraph({heading:HeadingLevel.HEADING_1,children:[new TextRun('ETUDE ECONOMIQUE -- TABLEAU 30 ANS')]}),
           new Paragraph({spacing:{after:160},children:[new TextRun({text:'Simulation : tarif '+d.elecPrice+' EUR/kWh, inflation '+document.getElementById('slInflation').value+' %/an, degradation 0,4 %/an, maintenance incluse mensualite.',font:'Arial',size:22,italics:true})]}),
           new Paragraph({spacing:{before:200,after:80},children:[new TextRun({text:'Tableau d amortissement',bold:true,font:'Arial',size:24,color:'1A3A2A'})]}),
@@ -2178,7 +2287,7 @@ function generatePDF() {
         { text: "Lieu de livraison : ", style: "bold", cont: "Identique a l'adresse de facturation" },
         { text: "Delai de livraison : ", style: "normal", cont: "90 jours sauf accord contraire des parties." },
         { text: "", style: "space" },
-        { text: "Attestation assurance decimale RC Pro : ", style: "normal", cont: "Contrat n 037.0012525.S179337" },
+        { text: "Attestation assurance decennale RC Pro : ", style: "normal", cont: "Contrat n 037.0012525.S179337" },
         { text: "", style: "space" },
         { text: "Puissance : " + d.power + " kWc", style: "bold" },
         { text: "Nombre de panneaux : " + d.panels, style: "bold" },
@@ -3324,7 +3433,7 @@ function locateRoof() {
   if (gps) {
     var parts = gps.replace(/[NSEWnsew]/g,' ').replace(/,/g,'.').trim().split(/[\s;]+/).map(parseFloat).filter(function(n){return !isNaN(n);});
     if (parts.length >= 2) {
-      roofMap.setView([parts[0], parts[1]], 19);
+      roofMap.setView([parts[0], parts[1]], 18);
       showToast('Toit localisé via GPS');
       return;
     }
@@ -3335,7 +3444,7 @@ function locateRoof() {
       .then(function(data){
         if (data.features && data.features.length > 0) {
           var c = data.features[0].geometry.coordinates;
-          roofMap.setView([c[1], c[0]], 19);
+          roofMap.setView([c[1], c[0]], 18);
           // GPS de l'adresse PRIORITAIRE (centré sur le bâtiment, plus précis que le PDF)
           var gpsStr = c[1].toFixed(5) + ', ' + c[0].toFixed(5);
           var gpsEl = document.getElementById('gpsCoords');
@@ -3632,6 +3741,22 @@ window.addEventListener('load', function() {
     document.head.appendChild(s);
   }
   tryDocx(['https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js','https://unpkg.com/docx@8.5.0/build/index.umd.js','https://cdn.jsdelivr.net/npm/docx@9.5.1/build/index.umd.js'], 0);
+
+  // Charger PptxGenJS de façon robuste si pas déjà chargé par le CDN du head
+  if (!window.PptxGenJS) {
+    function tryPptx(urls, i) {
+      if (i >= urls.length) return;
+      var s = document.createElement('script');
+      s.src = urls[i];
+      s.onload = function() { console.log('PptxGenJS chargé OK'); };
+      s.onerror = function() { tryPptx(urls, i+1); };
+      document.head.appendChild(s);
+    }
+    tryPptx([
+      'https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js',
+      'https://unpkg.com/pptxgenjs@3.12.0/dist/pptxgen.bundle.js'
+    ], 0);
+  }
 });
 </script>
 </body>
