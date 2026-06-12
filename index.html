@@ -8,7 +8,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pptxgenjs/3.12.0/pptxgen.bundle.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pptxgenjs/3.12.0/pptxgen.bundle.js" onerror="this.onerror=null;var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js';document.head.appendChild(s);"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -1672,12 +1672,14 @@ function updateKPIs() {
     const investHTL = finMode === 'cash'
       ? (parseFloat(document.getElementById('cashPrice').value) || 0)
       : (parseFloat(document.getElementById('monthly').value) || 0) * (parseInt(document.getElementById('duration').value) || 0);
-    // 5ème KPI : amortissement matériel (comptant) ou durée financement
+    // 5ème KPI : amortissement (comptant) ou durée financement
     if (finMode === 'cash') {
       const revBrutLisse = d.revMoyenAnnuel || d.gainMoyenAnnuel;
       const cashHTL = parseFloat(document.getElementById('cashPrice').value) || 0;
       if (cashHTL > 0 && revBrutLisse > 0) {
-        setKpi('kpiAmort', (cashHTL / revBrutLisse).toFixed(1) + ' ans', 'pos', 'Amortissement matériel');
+        const ansAmort = (cashHTL / revBrutLisse).toFixed(1);
+        const rentab = (revBrutLisse / cashHTL * 100).toFixed(1);
+        setKpi('kpiAmort', ansAmort + ' ans (' + rentab + '%/an)', 'pos', 'Amortissement matériel');
       } else {
         setKpi('kpiAmort', '--', '', 'Amortissement matériel');
       }
@@ -1706,12 +1708,29 @@ function updateKPIs() {
   const investHT = finMode === 'cash'
     ? (parseFloat(document.getElementById('cashPrice').value) || 0)
     : (parseFloat(document.getElementById('monthly').value) || 0) * (parseInt(document.getElementById('duration').value) || 0);
-  // 5ème KPI : amortissement matériel (comptant) ou durée financement
+  // 5ème KPI : amortissement par cumul des revenus + taux de rentabilité
   if (finMode === 'cash') {
-    const revMoyen = simData.length > 0 ? simData.reduce((s,d) => s + d.rev, 0) / simData.length : 0;
     const cashHT = parseFloat(document.getElementById('cashPrice').value) || 0;
-    if (cashHT > 0 && revMoyen > 0) {
-      setKpi('kpiAmort', (cashHT / revMoyen).toFixed(1) + ' ans', 'pos', 'Amortissement matériel');
+    if (cashHT > 0 && simData.length > 0) {
+      // Cumul des revenus bruts année par année jusqu'à rembourser l'installation
+      let cumulRev = 0;
+      let anneeAmort = 0;
+      for (let i = 0; i < simData.length; i++) {
+        cumulRev += simData[i].rev;
+        if (cumulRev >= cashHT && anneeAmort === 0) {
+          // Interpolation pour avoir la fraction d'année
+          const reste = cashHT - (cumulRev - simData[i].rev);
+          anneeAmort = i + (reste / simData[i].rev);
+          break;
+        }
+      }
+      // Taux de rentabilité = revenu an 1 / prix d'achat (comme immobilier)
+      const rentabilite = (simData[0].rev / cashHT * 100).toFixed(1);
+      if (anneeAmort > 0) {
+        setKpi('kpiAmort', anneeAmort.toFixed(1) + ' ans (' + rentabilite + '%/an)', 'pos', 'Amortissement matériel');
+      } else {
+        setKpi('kpiAmort', '> ' + simData.length + ' ans', '', 'Amortissement matériel');
+      }
     } else {
       setKpi('kpiAmort', '--', '', 'Amortissement matériel');
     }
@@ -1902,7 +1921,13 @@ async function generatePPTX() {
     const retour = simData.length && !simData[0].lisse ? (simData.find(x=>x.cum>=0)||{y:'?'}).y : 'An 3';
     const modeLabel = simMode === 'lisse' ? 'Lisse ' + (simData.length||30) + ' ans' : 'Reel an/an';
 
-    const pres = new PptxGenJS();
+    // Résoudre la référence PptxGenJS (le bundle peut l'exposer différemment)
+    const PPTX = window.PptxGenJS || window.pptxgen || (typeof PptxGenJS !== 'undefined' ? PptxGenJS : null);
+    if (!PPTX) {
+      showToast('Librairie PPTX non chargée — rechargez la page');
+      throw new Error('PptxGenJS non disponible');
+    }
+    const pres = new PPTX();
     pres.layout = 'LAYOUT_16x9';
 
     const C = { dark:'1A3A2A', green:'2E7D32', lime:'66BB6A', gold:'F9A825', white:'FFFFFF', gray:'546E7A', lgray:'B0BEC5', red:'C62828' };
@@ -3049,7 +3074,7 @@ function generateMaintenance() {
       a.href = URL.createObjectURL(blob);
       a.download = 'Contrat_Maintenance_' + (d.clientName||'client').replace(/\s+/g,'_') + '.docx';
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
-      shshowToast('Contrat de maintenance genere !');
+      showToast('Contrat de maintenance genere !');
     } catch(err) {
       console.error(err);
       showToast('Erreur : ' + err.message);
