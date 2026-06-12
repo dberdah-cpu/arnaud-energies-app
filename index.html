@@ -9,6 +9,9 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pptxgenjs/3.12.0/pptxgen.bundle.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <!-- docx charge dynamiquement -->
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet">
 <style>
@@ -487,7 +490,12 @@ td:first-child { text-align: center; font-weight: 600; color: var(--gray); }
       <div class="fields-grid">
         <div class="field-group">
           <label class="field-label">Puissance (kWc)</label>
-          <input class="field-input" id="power" placeholder="35" type="number" step="0.1">
+          <div style="display:flex;gap:6px;align-items:center">
+            <input class="field-input" id="power" placeholder="35" type="number" step="0.1" style="flex:1">
+            <button class="btn btn-outline" onclick="suggestPower()" id="btnSuggestPower" style="white-space:nowrap;padding:0.5rem 0.7rem;font-size:11px">
+              <span class="spinner" id="spinSuggestPower"></span>⚡ Suggérer
+            </button>
+          </div>
         </div>
         <div class="field-group">
           <label class="field-label">Nombre de panneaux</label>
@@ -495,7 +503,12 @@ td:first-child { text-align: center; font-weight: 600; color: var(--gray); }
         </div>
         <div class="field-group">
           <label class="field-label">Production étude PR 92% (kWh/an)</label>
-          <input class="field-input" id="prodStudy" placeholder="39510" type="number" oninput="calcProd100()">
+          <div style="display:flex;gap:6px;align-items:center">
+            <input class="field-input" id="prodStudy" placeholder="39510" type="number" oninput="calcProd100()" style="flex:1">
+            <button class="btn btn-outline" onclick="estimateProductionPVGIS()" id="btnPVGISprod" style="white-space:nowrap;padding:0.5rem 0.8rem;font-size:12px">
+              <span class="spinner" id="spinPVGISprod"></span>☀️ PVGIS
+            </button>
+          </div>
         </div>
         <div class="field-group">
           <label class="field-label">Production réelle an 1 — 100% (kWh)</label>
@@ -505,9 +518,35 @@ td:first-child { text-align: center; font-weight: 600; color: var(--gray); }
           <label class="field-label">Performance Ratio (%)</label>
           <input class="field-input" id="prRatio" placeholder="92" type="number" value="92" oninput="calcProd100()">
         </div>
-        <div class="field-group">
-          <label class="field-label">Consommation site (kWh/an)</label>
-          <input class="field-input" id="consumption" placeholder="66550" type="number">
+        <div class="field-group" style="grid-column:span 2">
+          <label class="field-label">Consommation du site
+            <span style="float:right;font-weight:normal">
+              <button class="btn btn-sm btn-outline" id="btnConsoAnnuel" onclick="setConsoMode('annuel')" style="padding:2px 10px;font-size:11px">Annuelle</button>
+              <button class="btn btn-sm btn-outline" id="btnConsoMensuel" onclick="setConsoMode('mensuel')" style="padding:2px 10px;font-size:11px">Mensuelle</button>
+            </span>
+          </label>
+          <!-- Mode annuel -->
+          <div id="consoAnnuelPanel">
+            <input class="field-input" id="consumption" placeholder="66550 kWh/an" type="number" oninput="syncConsoAnnuel()">
+          </div>
+          <!-- Mode mensuel -->
+          <div id="consoMensuelPanel" style="display:none">
+            <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:6px">
+              <div><label style="font-size:10px;color:var(--gray)">Jan</label><input class="field-input" id="consoM0" type="number" placeholder="kWh" oninput="syncConsoMensuel()" style="padding:6px;font-size:12px"></div>
+              <div><label style="font-size:10px;color:var(--gray)">Fév</label><input class="field-input" id="consoM1" type="number" placeholder="kWh" oninput="syncConsoMensuel()" style="padding:6px;font-size:12px"></div>
+              <div><label style="font-size:10px;color:var(--gray)">Mar</label><input class="field-input" id="consoM2" type="number" placeholder="kWh" oninput="syncConsoMensuel()" style="padding:6px;font-size:12px"></div>
+              <div><label style="font-size:10px;color:var(--gray)">Avr</label><input class="field-input" id="consoM3" type="number" placeholder="kWh" oninput="syncConsoMensuel()" style="padding:6px;font-size:12px"></div>
+              <div><label style="font-size:10px;color:var(--gray)">Mai</label><input class="field-input" id="consoM4" type="number" placeholder="kWh" oninput="syncConsoMensuel()" style="padding:6px;font-size:12px"></div>
+              <div><label style="font-size:10px;color:var(--gray)">Juin</label><input class="field-input" id="consoM5" type="number" placeholder="kWh" oninput="syncConsoMensuel()" style="padding:6px;font-size:12px"></div>
+              <div><label style="font-size:10px;color:var(--gray)">Juil</label><input class="field-input" id="consoM6" type="number" placeholder="kWh" oninput="syncConsoMensuel()" style="padding:6px;font-size:12px"></div>
+              <div><label style="font-size:10px;color:var(--gray)">Août</label><input class="field-input" id="consoM7" type="number" placeholder="kWh" oninput="syncConsoMensuel()" style="padding:6px;font-size:12px"></div>
+              <div><label style="font-size:10px;color:var(--gray)">Sep</label><input class="field-input" id="consoM8" type="number" placeholder="kWh" oninput="syncConsoMensuel()" style="padding:6px;font-size:12px"></div>
+              <div><label style="font-size:10px;color:var(--gray)">Oct</label><input class="field-input" id="consoM9" type="number" placeholder="kWh" oninput="syncConsoMensuel()" style="padding:6px;font-size:12px"></div>
+              <div><label style="font-size:10px;color:var(--gray)">Nov</label><input class="field-input" id="consoM10" type="number" placeholder="kWh" oninput="syncConsoMensuel()" style="padding:6px;font-size:12px"></div>
+              <div><label style="font-size:10px;color:var(--gray)">Déc</label><input class="field-input" id="consoM11" type="number" placeholder="kWh" oninput="syncConsoMensuel()" style="padding:6px;font-size:12px"></div>
+            </div>
+            <div style="margin-top:8px;font-size:13px;color:var(--green);font-weight:600">Total annuel : <span id="consoMensuelTotal">0</span> kWh/an</div>
+          </div>
         </div>
         <div class="field-group">
           <label class="field-label">Taux autoconsommation (%)</label>
@@ -542,7 +581,17 @@ td:first-child { text-align: center; font-weight: 600; color: var(--gray); }
         </div>
         <div class="field-group">
           <label class="field-label">Inclinaison (°)</label>
-          <input class="field-input" id="inclination" placeholder="30" type="number">
+          <div style="display:flex;gap:6px;align-items:center">
+            <input class="field-input" id="inclination" placeholder="30" type="number" style="flex:1">
+            <select class="field-input" onchange="if(this.value){document.getElementById('inclination').value=this.value;runSim&&runSim();}" style="flex:1.4">
+              <option value="">Choisir...</option>
+              <option value="5">Toit plat / terrasse (5°)</option>
+              <option value="15">Faible pente (15°)</option>
+              <option value="30">Toit standard (30°)</option>
+              <option value="35">Toit pentu (35°)</option>
+              <option value="45">Forte pente (45°)</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -556,6 +605,39 @@ td:first-child { text-align: center; font-weight: 600; color: var(--gray); }
           <label class="field-label">Blocage tarifaire (années)</label>
           <input class="field-input" id="priceLock" placeholder="3" type="number" min="0" max="10" value="0">
         </div>
+      </div>
+    </div>
+
+    <!-- MODULE TOITURE -->
+    <div class="card" style="margin-top:1.5rem">
+      <div class="card-header">
+        <h2 class="card-title">🛰️ Mesure de la toiture (vue satellite IGN)</h2>
+      </div>
+      <div style="padding:1rem">
+        <p style="color:var(--gray);font-size:13px;margin-bottom:1rem">
+          Saisissez l'adresse ci-dessus (ou les coordonnées GPS), puis cliquez sur <b>"Localiser"</b>. Dessinez le contour du toit en cliquant ses coins sur la carte, double-cliquez pour fermer le polygone. La surface est calculée automatiquement.
+        </p>
+        <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:center;margin-bottom:1rem">
+          <button class="btn btn-outline" onclick="locateRoof()" id="btnLocate">📍 Localiser l'adresse</button>
+          <button class="btn btn-outline" onclick="clearPolygon()">🗑️ Effacer le tracé</button>
+          <button class="btn btn-gold" onclick="captureMap()" id="btnCapture">📸 Ajouter au dossier</button>
+        </div>
+        <div id="roofStats" style="display:flex;gap:1.5rem;flex-wrap:wrap;margin-bottom:1rem">
+          <div class="kpi-card" style="flex:1;min-width:140px">
+            <div class="kpi-val" id="roofSurface" style="color:var(--green)">— m²</div>
+            <div class="kpi-lbl">Surface toit mesurée</div>
+          </div>
+          <div class="kpi-card" style="flex:1;min-width:140px">
+            <div class="kpi-val" id="roofPanels" style="color:var(--gold)">—</div>
+            <div class="kpi-lbl">Panneaux possibles (2,2 m²)</div>
+          </div>
+          <div class="kpi-card" style="flex:1;min-width:140px">
+            <div class="kpi-val" id="roofPower" style="color:var(--dark)">— kWc</div>
+            <div class="kpi-lbl">Puissance estimée (500 Wc)</div>
+          </div>
+        </div>
+        <div id="roofMap" style="height:480px;border-radius:12px;border:1px solid var(--border);overflow:hidden"></div>
+        <p id="captureStatus" style="color:var(--green);font-size:13px;margin-top:0.5rem;display:none">✓ Vue satellite ajoutée au dossier — elle apparaîtra dans la proposition PDF et la présentation.</p>
       </div>
     </div>
 
@@ -1083,19 +1165,61 @@ function extractAutoCalSol(text) {
     }
   };
 
-  // -- Nom client : 1ère ligne non vide du document --
+  // -- Nom client + Adresse --
   const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-  // La première ligne significative est le nom (ex: "EDWOOD" ou "DUCHANGE ET ASSOCIES")
-  // On cherche la 1ère ligne qui ne ressemble pas à une date ou un label AutoCalSol
-  for (const line of lines.slice(0, 10)) {
+
+  // Patterns AutoCalSol pour le nom du client
+  // Format 1 : "Client : NOM" ou "Client: NOM"
+  const clientLabelMatch = text.match(/Client\s*:\s*([^\n]{3,60})/i);
+  // Format 2 : "Maître d'ouvrage : NOM" ou "Bénéficiaire : NOM"
+  const maitreMatch = text.match(/(?:Ma[ît]+re\s+d.ouvrage|B[eé]n[eé]ficiaire|Propri[eé]taire|Commanditaire)\s*:\s*([^\n]{3,60})/i);
+  // Format 3 : première ligne significative (fallback)
+  let nameFromLines = '';
+  for (const line of lines.slice(0, 15)) {
     if (line.length >= 3 && line.length <= 60
       && !/^\d{2}[\/\-]\d{2}[\/\-]\d{4}$/.test(line)
-      && !/autocalsol|ines|photovolt|etude|rapport|pvgis/i.test(line)
-      && !/^[0-9]/.test(line)) {
-      set('clientName', line);
+      && !/autocalsol|ines|photovolt|etude|rapport|pvgis|arnaud|energies|cedi|logiciel|version|page/i.test(line)
+      && !/^[0-9]/.test(line)
+      && !/^[A-Z]{1,3}$/.test(line)) {
+      nameFromLines = line;
       break;
     }
   }
+
+  const clientName = (clientLabelMatch && clientLabelMatch[1].trim())
+    || (maitreMatch && maitreMatch[1].trim())
+    || nameFromLines;
+  if (clientName) set('clientName', clientName);
+
+  // -- Adresse client --
+  // Format 1 : "Adresse : X" ou "Adresse du site : X"
+  const adresseMatch = text.match(/Adresse(?:\s+du\s+site)?\s*:\s*([^\n]{5,100})/i);
+  // Format 2 : ligne avec code postal français (5 chiffres)
+  const cpMatch = text.match(/([^\n]*\d{5}[^\n]*)/);
+  // Format 3 : ligne avec numéro + rue après le nom du client
+  let adresseFromLines = '';
+  if (clientName) {
+    const nameIdx = text.indexOf(clientName);
+    if (nameIdx !== -1) {
+      const afterName = text.slice(nameIdx + clientName.length, nameIdx + clientName.length + 300);
+      const afterLines = afterName.split('\n').map(l => l.trim()).filter(l => l.length > 3);
+      for (const l of afterLines.slice(0, 5)) {
+        if (/\d/.test(l) && l.length > 5 && l.length < 100
+          && !/kWc|kWh|MWh|EUR|%|°|irrad|pvgis/i.test(l)) {
+          adresseFromLines = l;
+          break;
+        }
+      }
+    }
+  }
+
+  const clientAddress = (adresseMatch && adresseMatch[1].trim())
+    || adresseFromLines
+    || (cpMatch && cpMatch[1].trim());
+  if (clientAddress) set('clientAddress', clientAddress);
+
+  // Si GPS disponible et pas d'adresse, faire reverse geocoding
+  // (sera fait après extraction GPS plus bas)
 
   // -- Coordonnées GPS -> champ batterie --
   // Formats AutoCalSol GPS : "50.66135 N, 3.06490 E" ou "50,6903" / "3,1736" ou "50.6903 N 3.1736 E"
@@ -1120,6 +1244,27 @@ function extractAutoCalSol(text) {
       const gpsStr = latM[1].replace(',','.') + ', ' + lonM[1].replace(',','.');
       set('gpsCoords', gpsStr);
       window._extractedGPS = gpsStr;
+      gpsFound = true;
+    }
+  }
+
+  // Si GPS trouvé et adresse vide -> reverse geocoding via API Adresse gouvernementale
+  if (gpsFound && window._extractedGPS && !document.getElementById('clientAddress').value) {
+    const [latR, lonR] = window._extractedGPS.split(',').map(s => parseFloat(s.trim()));
+    if (!isNaN(latR) && !isNaN(lonR)) {
+      fetch('https://api-adresse.data.gouv.fr/reverse/?lon=' + lonR + '&lat=' + latR)
+        .then(r => r.json())
+        .then(data => {
+          if (data && data.features && data.features.length > 0) {
+            const props = data.features[0].properties;
+            const adresse = props.label || (props.name + ', ' + props.postcode + ' ' + props.city);
+            if (adresse && adresse.length > 5) {
+              set('clientAddress', adresse);
+              console.log('Adresse API gouv :', adresse);
+            }
+          }
+        })
+        .catch(() => {});
     }
   }
 
@@ -1138,14 +1283,18 @@ function extractAutoCalSol(text) {
   // -- Production annuelle : "XX,XX MWh" ou "XX XXX kWh" en haut de page 1 --
   // AutoCalSol page 1 : "39,51 MWh" ou "23 031 kWh" dans le bilan énergétique
   // On prend la PREMIÈRE occurrence de production (pas consommation)
-  const prodMWhMatch = text.match(/([\d]+[,.]\d+)\s*MWh[\s\S]{0,50}?(?:Produits|production|annuelle|l installation)/i);
-  const prodKWhMatch = text.match(/Production annuelle[\s\S]{0,100}?([\d][\d\s]{2,6})\s*kWh/i);
+  // Production annuelle en MWh (page 1 "Production annuelle" ou page 4)
+  const prodMWhMatch = text.match(/Production\s+annuelle[\s\S]{0,40}?([\d]+[,.]\d+)\s*MWh/i)
+    || text.match(/([\d]+[,.]\d+)\s*MWh/i);
+  // Ratio de performance (page 4) pour calculer prodStudy
+  const prMatch = text.match(/(?:ratio\s+de\s+performance|performance\s+ratio|PR)[\s:]*([\d]+[,.]?\d*)\s*%/i);
   if (prodMWhMatch) {
-    const val = Math.round(parseFloat(prodMWhMatch[1].replace(',', '.')) * 1000);
-    set('prodStudy', val);
-    calcProd100();
-  } else if (prodKWhMatch) {
-    set('prodStudy', prodKWhMatch[1].replace(/\s/g, ''));
+    const prodReal100 = Math.round(parseFloat(prodMWhMatch[1].replace(',', '.')) * 1000);
+    // prodReal = production 100%
+    if (document.getElementById('prodReal')) set('prodReal', prodReal100);
+    // prodStudy = production avec PR (si trouvé, sinon 92%)
+    const pr = prMatch ? parseFloat(prMatch[1].replace(',', '.')) / 100 : 0.92;
+    set('prodStudy', Math.round(prodReal100 * (pr < 1 ? pr : pr/100)));
     calcProd100();
   }
 
@@ -1184,14 +1333,16 @@ function extractAutoCalSol(text) {
   }
 
   // -- Tarif revente surplus --
-  const reventeIdx = text.search(/tarif.*(?:inject|revent|surplus|achat)|(?:inject|revent|surplus).*tarif/i);
-  if (reventeIdx !== -1) {
-    const reventeSection = text.slice(reventeIdx, reventeIdx + 200);
-    const m = reventeSection.match(/([\d]+[,.]\d+)\s*c?EUR\/kWh/i);
-    if (m) {
-      let val = parseFloat(m[1].replace(',', '.'));
-      if (val > 1) val = val / 100;
-      set('surplusPrice', val.toFixed(4));
+  // Tarif de rachat (page 5) — format "Tarif de rachat : X,XX c€/kWh"
+  const rachatMatch = text.match(/Tarif\s+de\s+rachat[\s:]*([\d]+[,.]\d+)\s*c?[€E]/i)
+    || text.match(/(?:tarif|rachat|revente|injection)[\s\S]{0,40}?([\d]+[,.]\d+)\s*c[€E]/i);
+  if (rachatMatch) {
+    let val = parseFloat(rachatMatch[1].replace(',', '.'));
+    if (val > 1) val = val / 100; // c€ -> €
+    set('surplusPrice', val.toFixed(4));
+    if (document.getElementById('slSurplus')) {
+      document.getElementById('slSurplus').value = val;
+      if (document.getElementById('lblSurplus')) document.getElementById('lblSurplus').textContent = val.toFixed(3).replace('.', ',');
     }
   }
 
@@ -1218,20 +1369,44 @@ function extractAutoCalSol(text) {
     document.getElementById('clientCode').classList.add('extracted');
   }
 
-  // -- Durée étude (20 ou 30 ans) --
-  const durationStudyMatch = text.match(/([23][05]|30|25|20)\s*(?:ans|annees)/i);
+  // -- Durée étude (page 5 : "Bilan financier sur XX ans") --
+  const bilanMatch = text.match(/Bilan\s+financier\s+sur\s+(\d{2})\s*ans/i);
+  const durationStudyMatch = bilanMatch || text.match(/(?:sur\s+)?(20|25|30)\s*ans/i);
   if (durationStudyMatch) {
     const el = document.getElementById('studyDuration');
     if (el) el.value = durationStudyMatch[1];
   }
-  // -- Type de projet --
-  if (/revente\s*totale|vente\s*totale|injection\s*totale/i.test(text)) {
+  // -- Type de projet (page 1 : "vente totale"/"autoconsommation", page 3 : "injection totale") --
+  if (/vente\s*totale|injection\s*totale|revente\s*totale/i.test(text)) {
     const el = document.getElementById('projectType');
     if (el) el.value = 'revente';
+  } else if (/autoconsommation/i.test(text)) {
+    const el = document.getElementById('projectType');
+    if (el) el.value = 'autoconso';
   }
 
+  // -- CAPEX / Investissement (page 1) -> prix comptant --
+  const capexMatch = text.match(/(?:Investissement|CAPEX|co[uû]t\s+total|montant)[\s:]*([\d][\d\s]{3,9})\s*[€E]/i);
+  if (capexMatch) {
+    const capex = parseInt(capexMatch[1].replace(/\s/g, ''));
+    if (capex > 1000 && document.getElementById('cashPrice')) {
+      set('cashPrice', capex);
+    }
+  }
+
+  // -- Dégradation annuelle (page 6) --
+  const degradMatch = text.match(/d[ée]gradation[\s\S]{0,30}?([\d]+[,.]\d+)\s*%/i);
+  if (degradMatch && document.getElementById('degradation')) {
+    set('degradation', degradMatch[1].replace(',', '.'));
+  }
+
+  // -- Irradiation (page 2) — info complémentaire --
+  const irradMatch = text.match(/irradiation[\s\S]{0,40}?([\d]+[,.]?\d*)\s*kWh\/m/i);
+  // (non stocké, juste pour validation future)
+
   // -- Date du rapport --
-  const dateMatch = text.match(/Le\s+(\d{2})\/(\d{2})\/(\d{4})/);
+  const dateMatch = text.match(/g[ée]n[ée]r[ée][\s\S]{0,30}?(\d{2})\/(\d{2})\/(\d{4})/i)
+    || text.match(/Le\s+(\d{2})\/(\d{2})\/(\d{4})/);
   if (dateMatch) {
     const d = `${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]}`;
     set('propDate', d);
@@ -1363,10 +1538,10 @@ function syncAdvancedFromStep1() {
 function runSim() {
   const tarif0 = parseFloat(document.getElementById('slTarif').value) || 0.26;
   const inflation = parseFloat(document.getElementById('slInflation').value) / 100;
-  const monthly = parseFloat(document.getElementById('slMensual').value) || 0;
-  const duration = parseInt(document.getElementById('duration').value) || 0;
-  const finYears = Math.ceil(duration / 12);
-  const annualFin = monthly * 12;
+  const monthly = finMode === 'cash' ? 0 : (parseFloat(document.getElementById('slMensual').value) || 0);
+  const duration = finMode === 'cash' ? 0 : (parseInt(document.getElementById('duration').value) || 0);
+  const finYears = finMode === 'cash' ? 0 : Math.ceil(duration / 12);
+  const annualFin = finMode === 'cash' ? 0 : monthly * 12;
 
   const prod0 = parseFloat(document.getElementById('simProd').value) || 42946;
   const degradation = parseFloat(document.getElementById('degradation').value) / 100;
@@ -1411,11 +1586,14 @@ function runSim() {
 
     // On stocke uniquement 2 points pour le graphique (pendant financement / après)
     // et on remplit simData avec des lignes vides pour les KPIs
+    // Revenu annuel moyen brut (sans déduire financement)
+    const revMoyenAnnuelLisse = totalNets / studyYearsL + annualFin; // gains + financement = revenus bruts
     simData = [{
       y: 'lisse',
       gainsNets30,
       gainMoyenAnnuel,
       gainMoyenMensuel,
+      revMoyenAnnuel: Math.round(revMoyenAnnuelLisse),
       finYears,
       annualFin,
       lisse: true
@@ -1482,10 +1660,17 @@ function updateKPIs() {
     const investHTL = finMode === 'cash'
       ? (parseFloat(document.getElementById('cashPrice').value) || 0)
       : (parseFloat(document.getElementById('monthly').value) || 0) * (parseInt(document.getElementById('duration').value) || 0);
-    if (investHTL > 0 && d.gainMoyenAnnuel > 0) {
-      setKpi('kpiAmort', (investHTL / d.gainMoyenAnnuel).toFixed(1) + ' ans', '', 'Amortissement réel');
+    // Amortissement matériel = Prix HT / revenu annuel moyen — comptant uniquement
+    if (finMode === 'cash') {
+      const revBrutLisse = d.revMoyenAnnuel || d.gainMoyenAnnuel;
+      const cashHTL = parseFloat(document.getElementById('cashPrice').value) || 0;
+      if (cashHTL > 0 && revBrutLisse > 0) {
+        setKpi('kpiAmort', (cashHTL / revBrutLisse).toFixed(1) + ' ans', '', 'Amortissement matériel');
+      } else {
+        setKpi('kpiAmort', '--', '', 'Amortissement matériel');
+      }
     } else {
-      setKpi('kpiAmort', '--', '', 'Amortissement réel');
+      setKpi('kpiAmort', 'N/A', '', 'Amortissement (comptant uniquement)');
     }
     return;
   }
@@ -1509,12 +1694,17 @@ function updateKPIs() {
   const investHT = finMode === 'cash'
     ? (parseFloat(document.getElementById('cashPrice').value) || 0)
     : (parseFloat(document.getElementById('monthly').value) || 0) * (parseInt(document.getElementById('duration').value) || 0);
-  const ansSansF = simData.filter(d => d.fin === 0);
-  const gainMoyenHF = ansSansF.length > 0 ? ansSansF.reduce((s,d) => s + d.net, 0) / ansSansF.length : 0;
-  if (investHT > 0 && gainMoyenHF > 0) {
-    setKpi('kpiAmort', (investHT / gainMoyenHF).toFixed(1) + ' ans', '', 'Amortissement réel');
+  // Amortissement matériel = Prix HT / revenu annuel moyen — comptant uniquement
+  if (finMode === 'cash') {
+    const revMoyen = simData.length > 0 ? simData.reduce((s,d) => s + d.rev, 0) / simData.length : 0;
+    const cashHT = parseFloat(document.getElementById('cashPrice').value) || 0;
+    if (cashHT > 0 && revMoyen > 0) {
+      setKpi('kpiAmort', (cashHT / revMoyen).toFixed(1) + ' ans', '', 'Amortissement matériel');
+    } else {
+      setKpi('kpiAmort', '--', '', 'Amortissement matériel');
+    }
   } else {
-    setKpi('kpiAmort', '--', '', 'Amortissement réel');
+    setKpi('kpiAmort', 'N/A', '', 'Amortissement (comptant uniquement)');
   }
 }
 
@@ -1674,8 +1864,13 @@ function updateRecap() {
     ? (simData[0].lisse ? simData[0].gainsNets30 : simData[simData.length - 1].cum)
     : 0;
   document.getElementById('recapGains').textContent = simData.length ? fmtSign(gains30) + ' EUR' : '--';
-  const m = finMode === 'mensual' ? document.getElementById('monthly').value : 'Comptant';
-  document.getElementById('recapMonthly').textContent = m ? (m + (finMode === 'mensual' ? ' EUR HT' : '')) : '--';
+  if (finMode === 'cash') {
+    const cp = parseFloat(document.getElementById('cashPrice').value) || 0;
+    document.getElementById('recapMonthly').textContent = cp > 0 ? fmt(cp) + ' EUR HT (comptant)' : 'Comptant';
+  } else {
+    const m = document.getElementById('monthly').value || '0';
+    document.getElementById('recapMonthly').textContent = m + ' EUR HT/mois x ' + (document.getElementById('duration').value||'0') + ' mois';
+  }
 }
 
 // --- GÉNÉRATION PDF PROPOSITION ----------------------------------------------
@@ -1911,6 +2106,36 @@ function generatePDF() {
         ]
       };
 
+      // Ajouter la vue satellite du toit si capturée
+      if (window._roofImageB64) {
+        const surfMes = window._roofSurface || 0;
+        const panNec = parseInt(d.panels) || 0;
+        const surfNec = Math.round(panNec * 2.2);
+        const panMax = window._roofPanelsMax || 0;
+        const surfUtile = Math.round(panMax * 2.2);
+        docDef.content.push(
+          { text: 'Vue satellite et implantation toiture', fontSize: 13, bold: true, color: '#1A3A2A', margin: [0, 20, 0, 8], pageBreak: 'before' },
+          { image: window._roofImageB64, width: 480, alignment: 'center' },
+          { text: 'Source : Orthophotos IGN-F / Géoportail — mesure indicative', fontSize: 8, italics: true, color: '#888', margin: [0, 6, 0, 12], alignment: 'center' },
+          {
+            table: {
+              widths: ['*', '*'],
+              body: [
+                [{ text: 'Caractéristique', bold: true, fillColor: '#1A3A2A', color: '#F9A825', fontSize: 10 }, { text: 'Valeur', bold: true, fillColor: '#1A3A2A', color: '#F9A825', fontSize: 10, alignment: 'right' }],
+                ['Surface toiture mesurée', { text: surfMes.toLocaleString('fr-FR') + ' m²', alignment: 'right', bold: true }],
+                ['Surface utile disponible', { text: surfUtile.toLocaleString('fr-FR') + ' m²', alignment: 'right', bold: true }],
+                ['Panneaux installés (projet)', { text: panNec + ' panneaux', alignment: 'right', bold: true }],
+                ['Surface nécessaire (projet)', { text: surfNec.toLocaleString('fr-FR') + ' m²', alignment: 'right', bold: true }],
+                ['Panneaux max possibles', { text: panMax + ' panneaux', alignment: 'right', bold: true }],
+                ['Puissance installée', { text: (d.power||'--') + ' kWc', alignment: 'right', bold: true, color: '#2E7D32' }],
+              ]
+            },
+            layout: { hLineColor: () => '#CCCCCC', vLineColor: () => '#CCCCCC', hLineWidth: () => 0.5, vLineWidth: () => 0.5 },
+            margin: [40, 0, 40, 0]
+          }
+        );
+      }
+
       pdfMake.createPdf(docDef).download('Proposition_' + propRef + '_' + (d.clientName || 'client').replace(/\s+/g,'_') + '.pdf');
       showToast('[OK] Proposition PDF générée');
     } catch(err) {
@@ -2004,6 +2229,36 @@ async function generatePPTX() {
     const engagements5 = ['Garantie de production : si inferieure de 5 %, panneaux supplementaires a titre gracieux','Maintenance incluse dans la mensualite : nettoyage, controle, interventions sous 48h a 10 jours','Assurance decimale n 037.0012525.S179337 + RC Pro + RGE QualiPV 500 (n QPV/72354)','Installation K2 Systems en surimposition : aucune atteinte a la structure ni a l etancheite'];
     engagements5.forEach((e,i)=>{ const ey=2.62+i*0.68; s5.addShape(pres.shapes.RECTANGLE,{x:0.3,y:ey,w:0.3,h:0.5,fill:{color:C.green},line:{color:C.green}}); s5.addText('OK',{x:0.3,y:ey,w:0.3,h:0.5,fontSize:9,bold:true,color:C.white,align:'center',valign:'middle',margin:0}); s5.addText(e,{x:0.7,y:ey,w:9.1,h:0.5,fontSize:10,color:C.white,valign:'middle',fontFace:'Calibri'}); });
     s5.addText('Arnaud Energies -- 54 Avenue Hoche, 75008 Paris -- contact@arnaudenergies.fr -- 01 89 70 63 65', {x:0.3,y:5.35,w:9.4,h:0.2,fontSize:7.5,color:C.lgray,align:'center',italic:true,fontFace:'Calibri'});
+
+    // Slide vue satellite du toit si capturée
+    if (window._roofImageB64) {
+      const sRoof = pres.addSlide();
+      sRoof.addShape(pres.shapes.RECTANGLE, {x:0,y:0,w:10,h:5.625,fill:{color:'F4FAF5'},line:{color:'F4FAF5'}});
+      sRoof.addShape(pres.shapes.RECTANGLE, {x:0,y:0,w:10,h:0.75,fill:{color:C.dark},line:{color:C.dark}});
+      sRoof.addText('Vue satellite et implantation toiture', {x:0.4,y:0,w:9,h:0.75,fontSize:20,bold:true,color:C.white,valign:'middle',fontFace:'Calibri'});
+      // Image à gauche
+      sRoof.addImage({ data: window._roofImageB64, x:0.4, y:1.0, w:5.8, h:4.0 });
+      // Données toiture à droite
+      const surfMesuree = window._roofSurface || 0;
+      const panneauxNec = parseInt(d.panels) || 0;
+      const surfNec = Math.round(panneauxNec * 2.2);
+      const panneauxMax = window._roofPanelsMax || 0;
+      const roofData = [
+        ['Surface toiture mesurée', (surfMesuree ? surfMesuree.toLocaleString('fr-FR') : '--') + ' m²'],
+        ['Surface utile disponible', (panneauxMax ? (panneauxMax*2.2).toLocaleString('fr-FR') : surfMesuree.toLocaleString('fr-FR')) + ' m²'],
+        ['Panneaux installés (projet)', panneauxNec + ' panneaux'],
+        ['Surface nécessaire (projet)', surfNec.toLocaleString('fr-FR') + ' m²'],
+        ['Panneaux max possibles', panneauxMax + ' panneaux'],
+        ['Puissance installée', (d.power||'--') + ' kWc'],
+      ];
+      roofData.forEach((row, i) => {
+        const yy = 1.1 + i*0.62;
+        sRoof.addShape(pres.shapes.RECTANGLE, {x:6.4, y:yy, w:3.2, h:0.52, fill:{color: i%2===0?'FFFFFF':'F0FBF0'}, line:{color:C.lgray, width:0.5}});
+        sRoof.addText(row[0], {x:6.5, y:yy, w:1.9, h:0.52, fontSize:9, color:C.dark, valign:'middle', fontFace:'Calibri'});
+        sRoof.addText(row[1], {x:8.3, y:yy, w:1.25, h:0.52, fontSize:10, bold:true, color:C.green, valign:'middle', align:'right', fontFace:'Calibri'});
+      });
+      sRoof.addText('Source : Orthophotos IGN-F / Géoportail — mesure indicative', {x:0.4,y:5.15,w:9,h:0.3,fontSize:8,italic:true,color:C.gray,align:'center',fontFace:'Calibri'});
+    }
 
     await pres.writeFile({fileName:'Presentation_'+(d.clientName||'client').replace(/\s+/g,'_')+'.pptx'});
     showToast('Presentation generee !');
@@ -2368,6 +2623,36 @@ function generatePDF() {
         ]
       };
 
+      // Ajouter la vue satellite du toit si capturée
+      if (window._roofImageB64) {
+        const surfMes = window._roofSurface || 0;
+        const panNec = parseInt(d.panels) || 0;
+        const surfNec = Math.round(panNec * 2.2);
+        const panMax = window._roofPanelsMax || 0;
+        const surfUtile = Math.round(panMax * 2.2);
+        docDef.content.push(
+          { text: 'Vue satellite et implantation toiture', fontSize: 13, bold: true, color: '#1A3A2A', margin: [0, 20, 0, 8], pageBreak: 'before' },
+          { image: window._roofImageB64, width: 480, alignment: 'center' },
+          { text: 'Source : Orthophotos IGN-F / Géoportail — mesure indicative', fontSize: 8, italics: true, color: '#888', margin: [0, 6, 0, 12], alignment: 'center' },
+          {
+            table: {
+              widths: ['*', '*'],
+              body: [
+                [{ text: 'Caractéristique', bold: true, fillColor: '#1A3A2A', color: '#F9A825', fontSize: 10 }, { text: 'Valeur', bold: true, fillColor: '#1A3A2A', color: '#F9A825', fontSize: 10, alignment: 'right' }],
+                ['Surface toiture mesurée', { text: surfMes.toLocaleString('fr-FR') + ' m²', alignment: 'right', bold: true }],
+                ['Surface utile disponible', { text: surfUtile.toLocaleString('fr-FR') + ' m²', alignment: 'right', bold: true }],
+                ['Panneaux installés (projet)', { text: panNec + ' panneaux', alignment: 'right', bold: true }],
+                ['Surface nécessaire (projet)', { text: surfNec.toLocaleString('fr-FR') + ' m²', alignment: 'right', bold: true }],
+                ['Panneaux max possibles', { text: panMax + ' panneaux', alignment: 'right', bold: true }],
+                ['Puissance installée', { text: (d.power||'--') + ' kWc', alignment: 'right', bold: true, color: '#2E7D32' }],
+              ]
+            },
+            layout: { hLineColor: () => '#CCCCCC', vLineColor: () => '#CCCCCC', hLineWidth: () => 0.5, vLineWidth: () => 0.5 },
+            margin: [40, 0, 40, 0]
+          }
+        );
+      }
+
       pdfMake.createPdf(docDef).download('Proposition_' + propRef + '_' + (d.clientName || 'client').replace(/\s+/g,'_') + '.pdf');
       showToast('[OK] Proposition PDF générée');
     } catch(err) {
@@ -2635,6 +2920,21 @@ async function calcBattery() {
 
     renderBatteryResults(batteryOptim, noBat, optimal);
     document.getElementById('batteryResults').style.display = 'block';
+
+    // Injecter le taux d'autoconsommation RÉEL (sans batterie) dans la simulation principale
+    const sansBatterie = batteryOptim.find(r => r.size === 0) || noBat;
+    if (sansBatterie && sansBatterie.autoconsoRate > 0) {
+      const acEl = document.getElementById('autoconsoRate');
+      if (acEl) {
+        acEl.value = sansBatterie.autoconsoRate;
+        acEl.classList.add('extracted');
+        const surplusEl = document.getElementById('surplusRate');
+        if (surplusEl) surplusEl.value = (100 - sansBatterie.autoconsoRate).toFixed(1);
+        if (typeof syncRates === 'function') syncRates('auto');
+        if (typeof runSim === 'function') runSim();
+        showToast('Taux autoconsommation réel : ' + sansBatterie.autoconsoRate + '% (calculé PVGIS)');
+      }
+    }
     status.textContent = `[OK] Optimisation terminée -- taille recommandée : ${optimal} kWh`;
     showToast('[OK] Calcul batterie terminé !');
 
@@ -2651,13 +2951,20 @@ function buildConsumptionProfile(annualKWh, dayPct, nightPct) {
   // Répartition horaire sur 8760h avec variation saisonnière
   // Jour = 8h-20h (12h), Nuit = 20h-8h (12h)
   // Variation saisonnière : hiver +20% conso, été -10%
-  const seasonCoeff = (month) => {
-    // month 0-11
-    if (month <= 1 || month === 11) return 1.20; // Déc-Fév : hiver
-    if (month >= 2 && month <= 4) return 1.05;   // Mar-Mai : printemps
-    if (month >= 5 && month <= 8) return 0.90;   // Juin-Sep : été
-    return 1.05;                                  // Oct-Nov : automne
-  };
+  // Si consommation mensuelle réelle saisie, l'utiliser pour les coefficients saisonniers
+  const moisData = window._consoMensuelle;
+  let seasonCoeff;
+  if (moisData && moisData.length === 12 && moisData.some(v => v > 0)) {
+    const moyenneMois = moisData.reduce((s,v) => s+v, 0) / 12;
+    seasonCoeff = (month) => moyenneMois > 0 ? (moisData[month] / moyenneMois) : 1;
+  } else {
+    seasonCoeff = (month) => {
+      if (month <= 1 || month === 11) return 1.20; // Déc-Fév : hiver
+      if (month >= 2 && month <= 4) return 1.05;   // Mar-Mai : printemps
+      if (month >= 5 && month <= 8) return 0.90;   // Juin-Sep : été
+      return 1.05;                                  // Oct-Nov : automne
+    };
+  }
 
   const hourly = new Array(8760).fill(0);
   let totalWeight = 0;
@@ -3030,8 +3337,474 @@ function generateMaintenance() {
 
 
 
+// Autocomplétion adresse via API Adresse data.gouv.fr
+function setupAddressAutocomplete() {
+  const input = document.getElementById('clientAddress');
+  if (!input) return;
+
+  let debounceTimer;
+  let dropdown = document.createElement('div');
+  dropdown.id = 'adresseDropdown';
+  dropdown.style.cssText = 'position:absolute;background:#fff;border:1px solid #ccc;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.15);z-index:9999;max-height:220px;overflow-y:auto;display:none;min-width:320px';
+  input.parentNode.style.position = 'relative';
+  input.parentNode.appendChild(dropdown);
+
+  input.addEventListener('input', function() {
+    clearTimeout(debounceTimer);
+    const q = this.value.trim();
+    if (q.length < 4) { dropdown.style.display = 'none'; return; }
+    debounceTimer = setTimeout(() => {
+      fetch('https://api-adresse.data.gouv.fr/search/?q=' + encodeURIComponent(q) + '&limit=6')
+        .then(r => r.json())
+        .then(data => {
+          dropdown.innerHTML = '';
+          if (!data.features || data.features.length === 0) { dropdown.style.display = 'none'; return; }
+          data.features.forEach(f => {
+            const item = document.createElement('div');
+            item.textContent = f.properties.label;
+            item.style.cssText = 'padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid #f0f0f0';
+            item.addEventListener('mouseenter', () => item.style.background = '#f4f8f4');
+            item.addEventListener('mouseleave', () => item.style.background = '#fff');
+            item.addEventListener('mousedown', (e) => {
+              e.preventDefault();
+              input.value = f.properties.label;
+              input.classList.add('extracted');
+              dropdown.style.display = 'none';
+              // Stocker les coordonnées GPS de l'adresse choisie
+              if (f.geometry && f.geometry.coordinates) {
+                const [lon, lat] = f.geometry.coordinates;
+                const gpsStr = lat.toFixed(5) + ', ' + lon.toFixed(5);
+                const gpsEl = document.getElementById('gpsCoords');
+                if (gpsEl && !gpsEl.value) {
+                  gpsEl.value = gpsStr;
+                  window._extractedGPS = gpsStr;
+                  console.log('GPS depuis adresse :', gpsStr);
+                }
+              }
+            });
+            dropdown.appendChild(item);
+          });
+          dropdown.style.display = 'block';
+        })
+        .catch(() => { dropdown.style.display = 'none'; });
+    }, 300);
+  });
+
+  document.addEventListener('click', (e) => {
+    if (e.target !== input) dropdown.style.display = 'none';
+  });
+}
+
+
+// ─── MODULE TOITURE (carte IGN + mesure) ──────────────────────────────────────
+var roofMap = null;
+var roofPolygon = null;
+var roofPoints = [];
+var roofTempLine = null;
+var roofMarkers = [];
+window._roofImageB64 = null;
+
+function initRoofMap() {
+  if (roofMap) return;
+  roofMap = L.map('roofMap', { center: [46.6, 2.5], zoom: 6 });
+
+  // Orthophotos IGN (flux public data.geopf.fr, sans clé depuis 2024)
+  L.tileLayer('https://data.geopf.fr/wmts?LAYER=ORTHOIMAGERY.ORTHOPHOTOS&EXCEPTIONS=text/xml&FORMAT=image/jpeg&SERVICE=WMTS&VERSION=1.0.0&REQUEST=GetTile&STYLE=normal&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}', {
+    attribution: 'IGN-F/Géoportail',
+    maxZoom: 21,
+    tileSize: 256
+  }).addTo(roofMap);
+
+  // Clic = ajouter un point au polygone
+  roofMap.on('click', function(e) {
+    roofPoints.push([e.latlng.lat, e.latlng.lng]);
+    var m = L.circleMarker(e.latlng, { radius: 5, color: '#F9A825', fillColor: '#F9A825', fillOpacity: 1 }).addTo(roofMap);
+    roofMarkers.push(m);
+    redrawPolygon();
+  });
+
+  // Double-clic = fermer le polygone
+  roofMap.on('dblclick', function(e) {
+    L.DomEvent.stop(e);
+    if (roofPoints.length >= 3) finalizePolygon();
+  });
+}
+
+function redrawPolygon() {
+  if (roofTempLine) roofMap.removeLayer(roofTempLine);
+  if (roofPoints.length >= 2) {
+    roofTempLine = L.polyline(roofPoints, { color: '#F9A825', weight: 2, dashArray: '5,5' }).addTo(roofMap);
+  }
+}
+
+function finalizePolygon() {
+  if (roofPolygon) roofMap.removeLayer(roofPolygon);
+  if (roofTempLine) { roofMap.removeLayer(roofTempLine); roofTempLine = null; }
+  roofPolygon = L.polygon(roofPoints, { color: '#2E7D32', weight: 3, fillColor: '#66BB6A', fillOpacity: 0.35 }).addTo(roofMap);
+
+  // Calcul de la surface (formule de Shoelace sur coordonnées projetées)
+  var surface = computePolygonArea(roofPoints);
+  document.getElementById('roofSurface').textContent = Math.round(surface).toLocaleString('fr-FR') + ' m²';
+
+  // Calcul automatique de l'orientation (azimut du versant) depuis le polygone
+  // On repère le côté le plus long = ligne de faîtage, l'orientation du versant est perpendiculaire
+  var orientation = computeRoofOrientation(roofPoints);
+  var orientEl = document.getElementById('orientation');
+  // Ne remplit que si vide (ne pas écraser AutoCalSol)
+  if (orientEl && !orientEl.value && orientation) {
+    orientEl.value = orientation.label;
+    orientEl.classList.add('extracted');
+    showToast('Orientation détectée : ' + orientation.label + ' (' + orientation.azimut + '°)');
+  }
+  var nbPanneaux = Math.floor(surface / 2.2);
+  document.getElementById('roofPanels').textContent = nbPanneaux.toLocaleString('fr-FR');
+  var puissance = (nbPanneaux * 0.5).toFixed(1);
+  document.getElementById('roofPower').textContent = puissance + ' kWc';
+
+  // Stocker pour PDF/PPTX
+  window._roofSurface = Math.round(surface);
+  window._roofPanelsMax = nbPanneaux;
+  window._roofPowerMax = puissance;
+
+  // Proposer de pré-remplir puissance + panneaux
+  if (confirm('Surface mesurée : ' + Math.round(surface) + ' m²\n' + nbPanneaux + ' panneaux possibles = ' + puissance + ' kWc.\n\nVoulez-vous reporter ces valeurs dans les champs puissance et panneaux ?')) {
+    var powEl = document.getElementById('power');
+    var panEl = document.getElementById('panels');
+    var surfEl = document.getElementById('pvSurface');
+    if (powEl) { powEl.value = puissance; powEl.classList.add('extracted'); }
+    if (panEl) { panEl.value = nbPanneaux; panEl.classList.add('extracted'); }
+    if (surfEl) { surfEl.value = Math.round(nbPanneaux * 2.2); }
+  }
+}
+
+// Surface d'un polygone GPS en m² (projection équirectangulaire locale)
+function computePolygonArea(points) {
+  if (points.length < 3) return 0;
+  var R = 6378137; // rayon terre en m
+  var lat0 = points.reduce(function(s,p){return s+p[0];},0) / points.length * Math.PI / 180;
+  var xy = points.map(function(p){
+    var x = R * (p[1] * Math.PI / 180) * Math.cos(lat0);
+    var y = R * (p[0] * Math.PI / 180);
+    return [x, y];
+  });
+  var area = 0;
+  for (var i = 0; i < xy.length; i++) {
+    var j = (i + 1) % xy.length;
+    area += xy[i][0] * xy[j][1] - xy[j][0] * xy[i][1];
+  }
+  return Math.abs(area / 2);
+}
+
+// Calcule l'orientation du versant le plus exposé à partir du polygone
+// Le côté le plus long est généralement la ligne de faîtage ; le versant fait face perpendiculairement
+function computeRoofOrientation(points) {
+  if (points.length < 3) return null;
+  // Trouver le côté le plus long (ligne de faîtage présumée)
+  var maxLen = 0, faiteIdx = 0;
+  for (var i = 0; i < points.length; i++) {
+    var j = (i + 1) % points.length;
+    var dLat = (points[j][0] - points[i][0]);
+    var dLon = (points[j][1] - points[i][1]) * Math.cos(points[i][0] * Math.PI / 180);
+    var len = Math.sqrt(dLat*dLat + dLon*dLon);
+    if (len > maxLen) { maxLen = len; faiteIdx = i; }
+  }
+  var p1 = points[faiteIdx];
+  var p2 = points[(faiteIdx + 1) % points.length];
+  // Azimut de la ligne de faîtage
+  var dLat = p2[0] - p1[0];
+  var dLon = (p2[1] - p1[1]) * Math.cos(p1[0] * Math.PI / 180);
+  var faiteAngle = Math.atan2(dLon, dLat) * 180 / Math.PI;
+  // Le versant fait face perpendiculairement au faîtage
+  // On calcule le centre du polygone pour déterminer de quel côté penche le versant
+  var cLat = points.reduce(function(s,p){return s+p[0];},0) / points.length;
+  var cLon = points.reduce(function(s,p){return s+p[1];},0) / points.length;
+  // Azimut perpendiculaire au faîtage (deux possibilités, on prend celle vers le sud par défaut)
+  var perp1 = (faiteAngle + 90) % 360;
+  var perp2 = (faiteAngle + 270) % 360;
+  // Convertir en azimut géographique (0 = Nord, 90 = Est, 180 = Sud, 270 = Ouest)
+  var azimut1 = ((90 - perp1) + 360) % 360;
+  var azimut2 = ((90 - perp2) + 360) % 360;
+  // Privilégier l'orientation la plus proche du Sud (180°) = meilleure production
+  var azimut = Math.abs(azimut1 - 180) < Math.abs(azimut2 - 180) ? azimut1 : azimut2;
+  azimut = Math.round(azimut);
+  // Convertir en label cardinal
+  var labels = [
+    [0, 'Nord'], [45, 'Nord-Est'], [90, 'Est'], [135, 'Sud-Est'],
+    [180, 'Sud'], [225, 'Sud-Ouest'], [270, 'Ouest'], [315, 'Nord-Ouest'], [360, 'Nord']
+  ];
+  var label = 'Sud';
+  var minDiff = 999;
+  for (var k = 0; k < labels.length; k++) {
+    var diff = Math.abs(azimut - labels[k][0]);
+    if (diff < minDiff) { minDiff = diff; label = labels[k][1]; }
+  }
+  return { azimut: azimut, label: label };
+}
+
+function clearPolygon() {
+  if (roofPolygon) { roofMap.removeLayer(roofPolygon); roofPolygon = null; }
+  if (roofTempLine) { roofMap.removeLayer(roofTempLine); roofTempLine = null; }
+  roofMarkers.forEach(function(m){ roofMap.removeLayer(m); });
+  roofMarkers = [];
+  roofPoints = [];
+  document.getElementById('roofSurface').textContent = '— m²';
+  document.getElementById('roofPanels').textContent = '—';
+  document.getElementById('roofPower').textContent = '— kWc';
+}
+
+function locateRoof() {
+  initRoofMap();
+  var gps = document.getElementById('gpsCoords').value.trim();
+  var addr = document.getElementById('clientAddress').value.trim();
+
+  if (gps) {
+    var parts = gps.replace(/[NSEWnsew]/g,' ').replace(/,/g,'.').trim().split(/[\s;]+/).map(parseFloat).filter(function(n){return !isNaN(n);});
+    if (parts.length >= 2) {
+      roofMap.setView([parts[0], parts[1]], 20);
+      showToast('Toit localisé via GPS');
+      return;
+    }
+  }
+  if (addr) {
+    fetch('https://api-adresse.data.gouv.fr/search/?q=' + encodeURIComponent(addr) + '&limit=1')
+      .then(function(r){return r.json();})
+      .then(function(data){
+        if (data.features && data.features.length > 0) {
+          var c = data.features[0].geometry.coordinates;
+          roofMap.setView([c[1], c[0]], 20);
+          // GPS de l'adresse PRIORITAIRE (centré sur le bâtiment, plus précis que le PDF)
+          var gpsStr = c[1].toFixed(5) + ', ' + c[0].toFixed(5);
+          var gpsEl = document.getElementById('gpsCoords');
+          if (gpsEl) {
+            gpsEl.value = gpsStr;
+            gpsEl.classList.add('extracted');
+            window._extractedGPS = gpsStr;
+            console.log('GPS adresse (prioritaire) : ' + gpsStr);
+          }
+          var score = data.features[0].properties.score;
+          showToast('Toit localisé via adresse' + (score ? ' (précision ' + Math.round(score*100) + '%)' : ''));
+        } else {
+          showToast('Adresse introuvable');
+        }
+      })
+      .catch(function(){ showToast('Erreur localisation'); });
+  } else {
+    showToast('Saisissez une adresse ou des coordonnées GPS');
+  }
+}
+
+function captureMap() {
+  if (!roofMap) { showToast('Localisez d abord le toit'); return; }
+  var btn = document.getElementById('btnCapture');
+  btn.disabled = true;
+  showToast('Capture de la vue satellite...', 5000);
+  // Laisser les tuiles se charger
+  setTimeout(function() {
+    html2canvas(document.getElementById('roofMap'), { useCORS: true, allowTaint: false, logging: false }).then(function(canvas) {
+      window._roofImageB64 = canvas.toDataURL('image/jpeg', 0.85);
+      document.getElementById('captureStatus').style.display = 'block';
+      showToast('Vue satellite ajoutée au dossier !');
+      btn.disabled = false;
+    }).catch(function(err) {
+      showToast('Erreur capture : ' + err.message);
+      btn.disabled = false;
+    });
+  }, 800);
+}
+
+
+// ─── ESTIMATION PRODUCTION VIA PVGIS ──────────────────────────────────────────
+async function estimateProductionPVGIS() {
+  const btn = document.getElementById('btnPVGISprod');
+  const spin = document.getElementById('spinPVGISprod');
+  if (btn) btn.disabled = true;
+  if (spin) spin.classList.add('show');
+
+  // Récupérer les paramètres
+  const gpsRaw = document.getElementById('gpsCoords').value.trim();
+  let lat, lon;
+  if (gpsRaw) {
+    const cleaned = gpsRaw.replace(/[NSEWnsew]/g, ' ').replace(/,/g, '.').trim();
+    const parts = cleaned.split(/[\s;]+/).map(parseFloat).filter(n => !isNaN(n) && n > 0);
+    if (parts.length >= 2) { lat = parts[0]; lon = parts[1]; }
+  }
+  if (!lat || !lon) {
+    showToast('GPS manquant — localisez d abord l adresse sur la carte');
+    if (btn) btn.disabled = false;
+    if (spin) spin.classList.remove('show');
+    return;
+  }
+
+  const power = parseFloat(document.getElementById('power').value) || 0;
+  if (!power) {
+    showToast('Puissance manquante — mesurez le toit ou saisissez la puissance');
+    if (btn) btn.disabled = false;
+    if (spin) spin.classList.remove('show');
+    return;
+  }
+
+  const inclination = parseFloat(document.getElementById('inclination').value) || 30;
+  // Convertir orientation cardinale en azimut PVGIS (0=Sud, -90=Est, 90=Ouest, 180=Nord)
+  const orientText = (document.getElementById('orientation').value || 'Sud').toLowerCase();
+  let azimuth = 0; // Sud par défaut
+  if (orientText.includes('est') && !orientText.includes('ouest')) azimuth = orientText.includes('sud') ? -45 : (orientText.includes('nord') ? -135 : -90);
+  else if (orientText.includes('ouest')) azimuth = orientText.includes('sud') ? 45 : (orientText.includes('nord') ? 135 : 90);
+  else if (orientText.includes('nord')) azimuth = 180;
+  else azimuth = 0;
+
+  showToast('Calcul production via PVGIS...', 8000);
+
+  try {
+    // PVGIS PVcalc : production annuelle pour installation fixe
+    const pvgisParams = 'lat=' + lat + '&lon=' + lon + '&peakpower=' + power + '&loss=14&angle=' + inclination + '&aspect=' + azimuth + '&outputformat=json&pvtechchoice=crystSi&mountingplace=building';
+    const pvgisUrl = 'https://re.jrc.ec.europa.eu/api/v5_2/PVcalc?' + pvgisParams;
+    const corsProxy = 'https://corsproxy.io/?' + encodeURIComponent(pvgisUrl);
+
+    let resp = null;
+    try {
+      resp = await Promise.race([fetch(pvgisUrl), new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),5000))]);
+      if (!resp.ok) resp = null;
+    } catch(e) { resp = null; }
+
+    if (!resp) {
+      showToast('Connexion directe bloquée, essai via proxy...');
+      resp = await fetch(corsProxy);
+    }
+    if (!resp || !resp.ok) throw new Error('PVGIS inaccessible');
+
+    const json = await resp.json();
+    const prodAnnuelle = Math.round(json.outputs.totals.fixed.E_y); // kWh/an production réelle (100%)
+
+    // Renseigner les champs :
+    // - prodReal = production 100% PVGIS
+    // - prodStudy = production avec PR 92% (prodReal × 0.92) pour cohérence avec format AutoCalSol
+    const prodStudy = Math.round(prodAnnuelle * 0.92);
+    document.getElementById('prodStudy').value = prodStudy;
+    document.getElementById('prodStudy').classList.add('extracted');
+    if (document.getElementById('prodReal')) {
+      document.getElementById('prodReal').value = prodAnnuelle;
+      document.getElementById('prodReal').classList.add('extracted');
+    }
+    calcProd100 && calcProd100();
+
+    showToast('Production PVGIS : ' + prodAnnuelle.toLocaleString('fr-FR') + ' kWh/an (100%)');
+  } catch(err) {
+    showToast('Erreur PVGIS : ' + err.message);
+  }
+  if (btn) btn.disabled = false;
+  if (spin) spin.classList.remove('show');
+}
+
+
+// ─── CONSOMMATION MENSUELLE / ANNUELLE ────────────────────────────────────────
+var consoMode = 'annuel';
+window._consoMensuelle = null; // tableau 12 valeurs si saisie mensuelle
+
+function setConsoMode(mode) {
+  consoMode = mode;
+  document.getElementById('consoAnnuelPanel').style.display = mode === 'annuel' ? 'block' : 'none';
+  document.getElementById('consoMensuelPanel').style.display = mode === 'mensuel' ? 'block' : 'none';
+  document.getElementById('btnConsoAnnuel').className = 'btn btn-sm ' + (mode === 'annuel' ? 'btn-primary' : 'btn-outline');
+  document.getElementById('btnConsoMensuel').className = 'btn btn-sm ' + (mode === 'mensuel' ? 'btn-primary' : 'btn-outline');
+}
+
+function syncConsoAnnuel() {
+  window._consoMensuelle = null; // priorité à l'annuel
+}
+
+function syncConsoMensuel() {
+  var total = 0;
+  var vals = [];
+  for (var i = 0; i < 12; i++) {
+    var v = parseFloat(document.getElementById('consoM' + i).value) || 0;
+    vals.push(v);
+    total += v;
+  }
+  document.getElementById('consoMensuelTotal').textContent = Math.round(total).toLocaleString('fr-FR');
+  // Reporter le total dans le champ annuel pour cohérence avec le reste de l'app
+  if (total > 0) {
+    document.getElementById('consumption').value = Math.round(total);
+    window._consoMensuelle = vals;
+  } else {
+    window._consoMensuelle = null;
+  }
+}
+
+// ─── SUGGESTION DE PUISSANCE (conso × 0,4 / production kWc PVGIS) ──────────────
+async function suggestPower() {
+  const btn = document.getElementById('btnSuggestPower');
+  const spin = document.getElementById('spinSuggestPower');
+  if (btn) btn.disabled = true;
+  if (spin) spin.classList.add('show');
+
+  const conso = parseFloat(document.getElementById('consumption').value) || 0;
+  if (!conso) {
+    showToast('Saisissez d abord la consommation du site');
+    if (btn) btn.disabled = false;
+    if (spin) spin.classList.remove('show');
+    return;
+  }
+
+  // Récupérer GPS
+  const gpsRaw = document.getElementById('gpsCoords').value.trim();
+  let lat, lon;
+  if (gpsRaw) {
+    const cleaned = gpsRaw.replace(/[NSEWnsew]/g, ' ').replace(/,/g, '.').trim();
+    const parts = cleaned.split(/[\s;]+/).map(parseFloat).filter(n => !isNaN(n) && n > 0);
+    if (parts.length >= 2) { lat = parts[0]; lon = parts[1]; }
+  }
+
+  const inclination = parseFloat(document.getElementById('inclination').value) || 30;
+  const orientText = (document.getElementById('orientation').value || 'Sud').toLowerCase();
+  let azimuth = 0;
+  if (orientText.includes('est') && !orientText.includes('ouest')) azimuth = orientText.includes('sud') ? -45 : (orientText.includes('nord') ? -135 : -90);
+  else if (orientText.includes('ouest')) azimuth = orientText.includes('sud') ? 45 : (orientText.includes('nord') ? 135 : 90);
+  else if (orientText.includes('nord')) azimuth = 180;
+
+  let prodParKWc = 1050; // fallback Île-de-France
+
+  if (lat && lon) {
+    showToast('Calcul production par kWc via PVGIS...', 6000);
+    try {
+      // PVGIS pour 1 kWc -> production par kWc
+      const params = 'lat=' + lat + '&lon=' + lon + '&peakpower=1&loss=14&angle=' + inclination + '&aspect=' + azimuth + '&outputformat=json&pvtechchoice=crystSi&mountingplace=building';
+      const url = 'https://re.jrc.ec.europa.eu/api/v5_2/PVcalc?' + params;
+      let resp = null;
+      try {
+        resp = await Promise.race([fetch(url), new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),5000))]);
+        if (!resp.ok) resp = null;
+      } catch(e) { resp = null; }
+      if (!resp) resp = await fetch('https://corsproxy.io/?' + encodeURIComponent(url));
+      if (resp && resp.ok) {
+        const json = await resp.json();
+        prodParKWc = Math.round(json.outputs.totals.fixed.E_y);
+      }
+    } catch(e) { /* garde fallback */ }
+  } else {
+    showToast('GPS absent — estimation avec 1050 kWh/kWc (IDF)');
+  }
+
+  // Puissance suggérée = (conso × 0,4) / production par kWc
+  const kWcSuggere = (conso * 0.4) / prodParKWc;
+  const nbPanneaux = Math.round(kWcSuggere / 0.5);
+  const kWcArrondi = (nbPanneaux * 0.5).toFixed(1);
+
+  document.getElementById('power').value = kWcArrondi;
+  document.getElementById('power').classList.add('extracted');
+  const panEl = document.getElementById('panels');
+  if (panEl) { panEl.value = nbPanneaux; panEl.classList.add('extracted'); }
+  const surfEl = document.getElementById('pvSurface');
+  if (surfEl) surfEl.value = Math.round(nbPanneaux * 2.2);
+
+  showToast('Suggéré : ' + kWcArrondi + ' kWc (' + nbPanneaux + ' panneaux) — production ' + prodParKWc + ' kWh/kWc/an. Modifiable.');
+
+  if (btn) btn.disabled = false;
+  if (spin) spin.classList.remove('show');
+}
+
 // Charger docx de facon non bloquante
 window.addEventListener('load', function() {
+  setupAddressAutocomplete();
   function tryDocx(urls, i) {
     if (i >= urls.length) return;
     var s = document.createElement('script');
