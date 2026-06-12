@@ -562,7 +562,7 @@ td:first-child { text-align: center; font-weight: 600; color: var(--gray); }
         </div>
         <div class="field-group">
           <label class="field-label">Type de projet</label>
-          <select class="field-input" id="projectType" onchange="runSim()">
+          <select class="field-input" id="projectType" onchange="updateProjectTypeUI()">
             <option value="autoconso">Autoconsommation + surplus</option>
             <option value="revente">Revente totale (tout vendu)</option>
           </select>
@@ -785,7 +785,7 @@ td:first-child { text-align: center; font-weight: 600; color: var(--gray); }
                   <th>kWh supplémentaires</th>
                   <th>Nouveau taux autoconso</th>
                   <th>Gain annuel</th>
-                  <th>Gain 30 ans</th>
+                  <th>Gain <span class="lbl-years">30</span> ans</th>
                   <th>Recommandation</th>
                 </tr>
               </thead>
@@ -809,7 +809,7 @@ td:first-child { text-align: center; font-weight: 600; color: var(--gray); }
             </div>
             <div class="kpi-card">
               <div class="kpi-val pos" id="batKpiGain30">—</div>
-              <div class="kpi-lbl">Gain supplémentaire 30 ans</div>
+              <div class="kpi-lbl">Gain supplémentaire <span class="lbl-years">30</span> ans</div>
             </div>
           </div>
 
@@ -924,7 +924,7 @@ td:first-child { text-align: center; font-weight: 600; color: var(--gray); }
         </div>
         <div class="field-group">
           <label class="field-label">Type de projet</label>
-          <select class="field-input" id="projectType" onchange="runSim()">
+          <select class="field-input" id="projectType" onchange="updateProjectTypeUI()">
             <option value="autoconso">Autoconsommation + surplus</option>
             <option value="revente">Revente totale (tout vendu)</option>
           </select>
@@ -947,7 +947,7 @@ td:first-child { text-align: center; font-weight: 600; color: var(--gray); }
         </div>
         <div class="kpi-card">
           <div class="kpi-val pos" id="kpiGains30">—</div>
-          <div class="kpi-lbl">Gains nets 30 ans</div>
+          <div class="kpi-lbl">Gains nets <span class="lbl-years">30</span> ans</div>
         </div>
         <div class="kpi-card">
           <div class="kpi-val" id="kpiAn1">—</div>
@@ -997,7 +997,7 @@ td:first-child { text-align: center; font-weight: 600; color: var(--gray); }
       <div class="kpi-bar" id="recapBar">
         <div class="kpi-card"><div class="kpi-val" id="recapPower">—</div><div class="kpi-lbl">Puissance</div></div>
         <div class="kpi-card"><div class="kpi-val" id="recapProd">—</div><div class="kpi-lbl">Production an 1</div></div>
-        <div class="kpi-card"><div class="kpi-val" id="recapGains">—</div><div class="kpi-lbl">Gains 30 ans</div></div>
+        <div class="kpi-card"><div class="kpi-val" id="recapGains">—</div><div class="kpi-lbl">Gains <span class="lbl-years">30</span> ans</div></div>
         <div class="kpi-card"><div class="kpi-val" id="recapMonthly">—</div><div class="kpi-lbl">Mensualité HT</div></div>
       </div>
 
@@ -1287,12 +1287,20 @@ function extractAutoCalSol(text) {
   // Ratio de performance (page 4) pour calculer prodStudy
   const prMatch = text.match(/(?:ratio\s+de\s+performance|performance\s+ratio|PR)[\s:]*([\d]+[,.]?\d*)\s*%/i);
   if (prodMWhMatch) {
-    const prodReal100 = Math.round(parseFloat(prodMWhMatch[1].replace(',', '.')) * 1000);
-    // prodReal = production 100%
-    if (document.getElementById('prodReal')) set('prodReal', prodReal100);
-    // prodStudy = production avec PR (si trouvé, sinon 92%)
-    const pr = prMatch ? parseFloat(prMatch[1].replace(',', '.')) / 100 : 0.92;
-    set('prodStudy', Math.round(prodReal100 * (pr < 1 ? pr : pr/100)));
+    // La production AutoCalsol en MWh est DÉJÀ la production réelle (PR appliqué)
+    const prodAnnuelle = Math.round(parseFloat(prodMWhMatch[1].replace(',', '.')) * 1000);
+    // Dans AutoCalsol, "Production électrique annuelle" = production nette livrée
+    // C'est cette valeur qu'on met dans prodStudy (utilisée pour les calculs)
+    set('prodStudy', prodAnnuelle);
+    // prodReal (production 100% théorique) = prodStudy / PR si PR connu, sinon = prodStudy
+    if (document.getElementById('prodReal')) {
+      const pr = prMatch ? parseFloat(prMatch[1].replace(',', '.')) : 0;
+      if (pr > 50 && pr < 100) {
+        set('prodReal', Math.round(prodAnnuelle / (pr / 100)));
+      } else {
+        set('prodReal', prodAnnuelle);
+      }
+    }
     calcProd100();
   }
 
@@ -1538,6 +1546,7 @@ function runSim() {
   const _sy = document.getElementById('studyDuration') ? document.getElementById('studyDuration').value : 30;
   const _ly = document.getElementById('lisseYears');
   if (_ly) _ly.textContent = _sy;
+  document.querySelectorAll('.lbl-years').forEach(function(el){ el.textContent = _sy; });
   const tarif0 = parseFloat(document.getElementById('slTarif').value) || 0.26;
   const inflation = parseFloat(document.getElementById('slInflation').value) / 100;
   const monthly = finMode === 'cash' ? 0 : (parseFloat(document.getElementById('slMensual').value) || 0);
@@ -1653,8 +1662,8 @@ function updateKPIs() {
     const gainMoisAvecFin = Math.round(d.gainsNets30 / 30 / 12 - mensualiteHT);
     const gainMoisSansFin = Math.round(d.gainsNets30 / 30 / 12);
 
-    setKpi('kpiGains30',  fmtSign(d.gainsNets30) + ' EUR',        'pos', 'Gains nets 30 ans');
-    setKpi('kpiDeficit',  fmtSign(d.gainMoyenAnnuel) + ' EUR/an', 'pos', 'Gain annuel moyen (30 ans / 30)');
+    setKpi('kpiGains30',  fmtSign(d.gainsNets30) + ' EUR',        'pos', 'Gains nets ' + studyYearsLisse + ' ans');
+    setKpi('kpiDeficit',  fmtSign(d.gainMoyenAnnuel) + ' EUR/an', 'pos', 'Gain annuel moyen (' + studyYearsLisse + ' ans)');
     setKpi('kpiAn1',      fmtSign(gainMoisSansFin) + ' EUR/mois', 'pos', 'Gain mensuel moyen (' + studyYearsLisse + ' ans)');
     setKpi('kpiRetour',
       d.finYears > 0 ? fmtSign(gainMoisAvecFin) + ' EUR/mois' : '--',
@@ -1663,17 +1672,17 @@ function updateKPIs() {
     const investHTL = finMode === 'cash'
       ? (parseFloat(document.getElementById('cashPrice').value) || 0)
       : (parseFloat(document.getElementById('monthly').value) || 0) * (parseInt(document.getElementById('duration').value) || 0);
-    // Amortissement matériel = Prix HT / revenu annuel moyen — comptant uniquement
+    // 5ème KPI : amortissement matériel (comptant) ou durée financement
     if (finMode === 'cash') {
       const revBrutLisse = d.revMoyenAnnuel || d.gainMoyenAnnuel;
       const cashHTL = parseFloat(document.getElementById('cashPrice').value) || 0;
       if (cashHTL > 0 && revBrutLisse > 0) {
-        setKpi('kpiAmort', (cashHTL / revBrutLisse).toFixed(1) + ' ans', '', 'Amortissement matériel');
+        setKpi('kpiAmort', (cashHTL / revBrutLisse).toFixed(1) + ' ans', 'pos', 'Amortissement matériel');
       } else {
         setKpi('kpiAmort', '--', '', 'Amortissement matériel');
       }
     } else {
-      setKpi('kpiAmort', 'N/A', '', 'Amortissement (comptant uniquement)');
+      setKpi('kpiAmort', (d.finYears || '--') + ' ans', '', 'Amortissement (financement)');
     }
     return;
   }
@@ -1681,7 +1690,7 @@ function updateKPIs() {
   // Mode réel -- reset labels
   setKpi('kpiDeficit', '', '',   'Déficit cumulé max');
   setKpi('kpiRetour',  '', '',   'Retour positif cumulé');
-  setKpi('kpiGains30', '', '',   'Gains nets 30 ans');
+  setKpi('kpiGains30', '', '',   'Gains nets ' + (simData.length||30) + ' ans');
   setKpi('kpiAn1',     '', '',   'Résultat an 1 (mois)');
 
   const minCum  = Math.min(...simData.map(d => d.cum));
@@ -1690,24 +1699,26 @@ function updateKPIs() {
   const an1     = simData[0].net;
 
   setKpi('kpiDeficit', minCum < 0 ? fmtSign(minCum) + ' EUR' : '0 EUR', minCum < 0 ? 'neg' : 'pos', 'Déficit cumulé max');
-  setKpi('kpiRetour',  retour ? 'An ' + retour.y : '> 30 ans', '', 'Retour positif cumulé');
-  setKpi('kpiGains30', fmtSign(gains30) + ' EUR', 'pos', 'Gains nets 30 ans');
+  setKpi('kpiRetour',  retour ? 'An ' + retour.y : '> ' + simData.length + ' ans', '', 'Retour positif cumulé');
+  setKpi('kpiGains30', fmtSign(gains30) + ' EUR', 'pos', 'Gains nets ' + simData.length + ' ans');
   setKpi('kpiGains30', fmtSign(gains30) + ' EUR', 'pos', 'Gains nets ' + simData.length + ' ans');
   setKpi('kpiAn1',     (an1/12 >= 0 ? '+' : '') + Math.round(an1/12) + ' EUR/mois', an1 >= 0 ? 'pos' : 'neg', 'Résultat an 1 (mois)');
   const investHT = finMode === 'cash'
     ? (parseFloat(document.getElementById('cashPrice').value) || 0)
     : (parseFloat(document.getElementById('monthly').value) || 0) * (parseInt(document.getElementById('duration').value) || 0);
-  // Amortissement matériel = Prix HT / revenu annuel moyen — comptant uniquement
+  // 5ème KPI : amortissement matériel (comptant) ou durée financement
   if (finMode === 'cash') {
     const revMoyen = simData.length > 0 ? simData.reduce((s,d) => s + d.rev, 0) / simData.length : 0;
     const cashHT = parseFloat(document.getElementById('cashPrice').value) || 0;
     if (cashHT > 0 && revMoyen > 0) {
-      setKpi('kpiAmort', (cashHT / revMoyen).toFixed(1) + ' ans', '', 'Amortissement matériel');
+      setKpi('kpiAmort', (cashHT / revMoyen).toFixed(1) + ' ans', 'pos', 'Amortissement matériel');
     } else {
       setKpi('kpiAmort', '--', '', 'Amortissement matériel');
     }
   } else {
-    setKpi('kpiAmort', 'N/A', '', 'Amortissement (comptant uniquement)');
+    // Financement : amortissement sur la durée du financement
+    const finY = simData.length > 0 ? Math.max(...simData.map(d => d.fin > 0 ? d.y : 0)) : 0;
+    setKpi('kpiAmort', (finY || '--') + ' ans', '', 'Amortissement (financement)');
   }
 }
 
@@ -1878,279 +1889,6 @@ function updateRecap() {
 }
 
 // --- GÉNÉRATION PDF PROPOSITION ----------------------------------------------
-function generatePDF() {
-  const spin = document.getElementById('spinPDF');
-  spin.classList.add('show');
-
-  setTimeout(() => {
-    try {
-      const d = getData();
-      const obs = document.getElementById('observations').value || '';
-
-      // Numéro de proposition auto
-      const today = new Date();
-      const propRef = d.propRef || ('PR' + String(today.getFullYear()).slice(2) + String(today.getMonth()+1).padStart(2,'0') + '-XXXX');
-      const dateStr = formatDate(today);
-      const validStr = formatDate(new Date(today.getTime() + 15*86400000));
-
-      // Texte désignation
-      const isPanneaux = parseInt(d.panels);
-      const designLines = [
-        { text: "Lieu de livraison : ", style: "bold", cont: "Identique a l'adresse de facturation" },
-        { text: "Delai de livraison : ", style: "normal", cont: "90 jours sauf accord contraire des parties." },
-        { text: "", style: "space" },
-        { text: "Attestation assurance decimale RC Pro : ", style: "normal", cont: "Contrat n 037.0012525.S179337" },
-        { text: "", style: "space" },
-        { text: "Puissance : " + d.power + " kWc", style: "bold" },
-        { text: "Nombre de panneaux : " + d.panels, style: "bold" },
-        { text: "", style: "space" },
-        { text: "Marque : Francilienne ENERGY - Ref : MONO 500 W", style: "normal" },
-        { text: "Panneaux photovoltaiques monocristallin Full Black 500 Wc 132 DEMI-CELLULES PERC", style: "normal" },
-        { text: "Dimension cadre (mm) : L 2094 x l 1134 x E 35", style: "normal" },
-        { text: "Garantie 30 ans", style: "bold" },
-        { text: "", style: "space" },
-        { text: "Marque : Huawei - Ref : SUN2000", style: "normal" },
-        { text: "Onduleurs triphase : Smart Energy controller AC et DC", style: "normal" },
-        { text: "Garantie 10 ans", style: "bold" },
-        { text: "", style: "space" },
-        { text: "Systeme de pilotage", style: "bold" },
-        { text: "", style: "space" },
-        { text: "Huawei Smart Power Sensor : optimisation de l autoconsommation grace au suivi en temps reel des flux electriques, directement au tableau en mode rail DIN", style: "normal" },
-        { text: "", style: "space" },
-        { text: "Application dediee FusionSolar permettant d'optimiser les performances et suivre les donnees en temps reel.", style: "normal" },
-        { text: "", style: "space" },
-        { text: "Demarches incluses au projet :", style: "normal" },
-        { text: "- Obtention de la declaration prealable de travaux.", style: "normal" },
-        { text: "- Obtention d un contrat de revente du surplus et visite technique.", style: "normal" },
-        { text: "- Demande au tiers financeur.", style: "normal" },
-        { text: "", style: "space" },
-        { text: "Raccordement :", style: "normal" },
-        { text: "- Raccordement au tableau electrique dans le cadre de l autoconsommation.", style: "normal" },
-        { text: "- Raccordement au reseau pour la revente de surplus a hauteur de 1 500 euros.", style: "normal" },
-      ];
-      if (obs) {
-        designLines.push({ text: '', style: 'space' });
-        designLines.push({ text: "Observations :", style: 'bold' });
-        designLines.push({ text: obs, style: 'normal' });
-      }
-
-      const htVal = finMode === 'mensual'
-        ? parseFloat(d.monthly).toFixed(2)
-        : parseFloat(d.cashPrice).toFixed(2);
-      const tvaVal = finMode === 'mensual'
-        ? (parseFloat(d.monthly) * 0.20).toFixed(2)
-        : (parseFloat(d.cashPrice) * 0.20).toFixed(2);
-      const ttcVal = finMode === 'mensual'
-        ? (parseFloat(d.monthly) * 1.20).toFixed(2)
-        : (parseFloat(d.cashPrice) * 1.20).toFixed(2);
-      const durationLabel = finMode === 'mensual'
-        ? "Tarif mensuel sur " + d.duration + " mensualites"
-        : "Prix comptant - fourniture, installation et mise en service.";
-
-      const condGenText = [
-        "Conditions generales : Ce devis devient caduc si accord tiers financeur, autorisation travaux, faisabilite technique ou autorisation Enedis non obtenus.",
-        "",
-        "Annulation : se referer aux CGV sur www.arnaudenergies.fr.",
-        "",
-        "Litiges : resolution amiable dans un delai de 6 semaines, puis mediation via http://mcpmediation.org ou 12 square Desnouettes, 75015 Paris.",
-      ].join("\n");
-
-      const docDef = {
-        pageSize: 'A4',
-        pageMargins: [40, 40, 40, 60],
-        defaultStyle: { font: 'Roboto', fontSize: 9, color: '#1A1A1A' },
-        footer: (currentPage, pageCount) => ({
-          columns: [
-            { text: 'Société par actions simplifiée unipersonnelle (SASU) - Capital de 30 000 EUR - SIRET: 89999433900013\nNAF-APE: 4322B - RCS/RM: 899 994 339 R.C.S. Paris - Numéro TVA: FR57899994339', fontSize: 7, color: '#888', margin: [40, 0, 40, 0] },
-            { text: currentPage + ' / ' + pageCount, alignment: 'right', fontSize: 7, color: '#888', margin: [0, 0, 40, 0] }
-          ],
-          margin: [40, 10, 40, 0]
-        }),
-        content: [
-          // En-tête
-          {
-            columns: [
-              {
-                stack: [
-                  ...(LOGO_B64 ? [{ image: LOGO_B64, width: 130, margin: [0, 0, 0, 0] }] : [{ text: 'Arnaud Energies', bold: true, fontSize: 18, color: '#1E5C2E' }]),
-                ],
-                width: 140
-              },
-              { width: '*', text: '' },
-              {
-                stack: [
-                  { text: 'Proposition ' + propRef, fontSize: 14, bold: true, color: '#1A1A1A', alignment: 'right' },
-                  { text: 'Date : ' + dateStr, fontSize: 9, alignment: 'right', margin: [0, 2, 0, 0] },
-                  { text: 'Date de fin de validité : ' + validStr, fontSize: 9, alignment: 'right' },
-                  { text: 'Code client : ' + (d.clientCode || ''), fontSize: 9, alignment: 'right' },
-                ]
-              }
-            ],
-            margin: [0, 0, 0, 16]
-          },
-          // Émetteur / Adressé à
-          {
-            columns: [
-              {
-                width: '50%',
-                stack: [
-                  { text: 'Émetteur', fontSize: 8, color: '#888' },
-                  {
-                    table: {
-                      widths: ['*'],
-                      body: [[{
-                        stack: [
-                          { text: 'Arnaud Energies', bold: true, fontSize: 9 },
-                          { text: '54-56, 54 AVENUE HOCHE', fontSize: 8.5 },
-                          { text: '75008 Paris', fontSize: 8.5 },
-                          { text: 'France', fontSize: 8.5 },
-                          { text: '', margin: [0,4,0,0] },
-                          { text: 'Tél.: 0189706365', fontSize: 8.5 },
-                          { text: 'Email: contact@arnaudenergies.fr', fontSize: 8.5 },
-                          { text: 'Web: https://arnaudenergies.fr/', fontSize: 8.5 },
-                        ],
-                        margin: [6, 6, 6, 6]
-                      }]]
-                    },
-                    layout: { hLineColor: () => '#CCCCCC', vLineColor: () => '#CCCCCC' }
-                  }
-                ]
-              },
-              { width: 20, text: '' },
-              {
-                width: '*',
-                stack: [
-                  { text: 'Adressé à', fontSize: 8, color: '#888' },
-                  {
-                    table: {
-                      widths: ['*'],
-                      body: [[{
-                        stack: [
-                          { text: d.clientName || '', bold: true, fontSize: 9 },
-                          { text: d.clientAddress || '', fontSize: 8.5 },
-                        ],
-                        margin: [6, 8, 6, 30]
-                      }]]
-                    },
-                    layout: { hLineColor: () => '#CCCCCC', vLineColor: () => '#CCCCCC' }
-                  }
-                ]
-              }
-            ],
-            margin: [0, 0, 0, 12]
-          },
-          // Tableau désignation
-          {
-            table: {
-              widths: ['*', 40, 50, 30, 55],
-              headerRows: 1,
-              body: [
-                [
-                  { text: 'Désignation', fontSize: 8.5 },
-                  { text: 'TVA', fontSize: 8.5, alignment: 'center' },
-                  { text: 'P.U. HT', fontSize: 8.5, alignment: 'right' },
-                  { text: 'Qté', fontSize: 8.5, alignment: 'center' },
-                  { text: 'Total HT', fontSize: 8.5, alignment: 'right' },
-                ],
-                [
-                  {
-                    stack: designLines.filter(l => l.text !== '').map(l => ({
-                      text: l.text + (l.cont ? l.cont : ''),
-                      bold: l.style === 'bold',
-                      fontSize: 8.5,
-                      margin: [0, 1, 0, 1]
-                    })).concat([
-                      { text: '', margin: [0, 4, 0, 0] },
-                      { text: 'Fourniture, installation et mise en service.', bold: true, fontSize: 8.5 },
-                      { text: '', margin: [0, 6, 0, 0] },
-                      { text: durationLabel, bold: true, fontSize: 8.5 },
-                      { text: condGenText, fontSize: 7.5, color: '#444', margin: [0, 12, 0, 0] },
-                    ]),
-                    margin: [2, 4, 2, 4]
-                  },
-                  { text: '20%', alignment: 'center', fontSize: 8.5 },
-                  { text: htVal, alignment: 'right', fontSize: 8.5 },
-                  { text: '1', alignment: 'center', fontSize: 8.5 },
-                  { text: htVal, alignment: 'right', fontSize: 8.5 },
-                ]
-              ]
-            },
-            layout: { hLineColor: () => '#CCCCCC', vLineColor: () => '#CCCCCC', hLineWidth: () => 0.5, vLineWidth: () => 0.5 }
-          },
-          // Totaux
-          {
-            margin: [0, 8, 0, 8],
-            columns: [
-              { width: '*', text: '' },
-              {
-                width: 180,
-                table: {
-                  widths: ['*', 70],
-                  body: [
-                    [{ text: 'Total HT', fontSize: 8.5 }, { text: htVal + ' EUR', alignment: 'right', fontSize: 8.5 }],
-                    [{ text: 'Total TVA 20%', fontSize: 8.5 }, { text: tvaVal + ' EUR', alignment: 'right', fontSize: 8.5 }],
-                    [{ text: 'Total TTC', bold: true, fontSize: 9 }, { text: ttcVal + ' EUR', bold: true, alignment: 'right', fontSize: 9 }],
-                  ]
-                },
-                layout: { hLineColor: () => '#CCCCCC', vLineColor: () => '#CCCCCC', hLineWidth: () => 0.5, vLineWidth: () => 0.5 }
-              }
-            ]
-          },
-          // Signature
-          {
-            table: {
-              widths: ['*'],
-              body: [[{
-                text: "Cachet, Date, Signature et mention Bon pour Accord",
-                fontSize: 8.5, margin: [4, 4, 4, 40]
-              }]]
-            },
-            layout: { hLineColor: () => '#CCCCCC', vLineColor: () => '#CCCCCC', hLineWidth: () => 0.5, vLineWidth: () => 0.5 }
-          }
-        ]
-      };
-
-      // Ajouter la vue satellite du toit si capturée
-      if (window._roofImageB64) {
-        const surfMes = window._roofSurface || 0;
-        const panNec = parseInt(d.panels) || 0;
-        const surfNec = Math.round(panNec * 2.2);
-        const panMax = window._roofPanelsMax || 0;
-        const surfUtile = Math.round(panMax * 2.2);
-        docDef.content.push(
-          { text: 'Vue satellite et implantation toiture', fontSize: 13, bold: true, color: '#1A3A2A', margin: [0, 20, 0, 8], pageBreak: 'before' },
-          { image: window._roofImageB64, width: 480, alignment: 'center' },
-          { text: 'Source : Orthophotos IGN-F / Géoportail — mesure indicative', fontSize: 8, italics: true, color: '#888', margin: [0, 6, 0, 12], alignment: 'center' },
-          {
-            table: {
-              widths: ['*', '*'],
-              body: [
-                [{ text: 'Caractéristique', bold: true, fillColor: '#1A3A2A', color: '#F9A825', fontSize: 10 }, { text: 'Valeur', bold: true, fillColor: '#1A3A2A', color: '#F9A825', fontSize: 10, alignment: 'right' }],
-                ['Surface toiture mesuree', { text: surfMes.toLocaleString('fr-FR') + ' m2', alignment: 'right', bold: true }],
-                ['Surface utile disponible', { text: surfUtile.toLocaleString('fr-FR') + ' m2', alignment: 'right', bold: true }],
-                ['Panneaux installes (projet)', { text: panNec + ' panneaux', alignment: 'right', bold: true }],
-                ['Surface necessaire (projet)', { text: surfNec.toLocaleString('fr-FR') + ' m2', alignment: 'right', bold: true }],
-                ['Panneaux max possibles', { text: panMax + ' panneaux', alignment: 'right', bold: true }],
-                ['Puissance installée', { text: (d.power||'--') + ' kWc', alignment: 'right', bold: true, color: '#2E7D32' }],
-              ]
-            },
-            layout: { hLineColor: () => '#CCCCCC', vLineColor: () => '#CCCCCC', hLineWidth: () => 0.5, vLineWidth: () => 0.5 },
-            margin: [40, 0, 40, 0]
-          }
-        );
-      }
-
-      pdfMake.createPdf(docDef).download('Proposition_' + propRef + '_' + (d.clientName || 'client').replace(/\s+/g,'_') + '.pdf');
-      showToast('[OK] Proposition PDF générée');
-    } catch(err) {
-      console.error(err);
-      showToast('[ERR] Erreur génération PDF : ' + err.message);
-    }
-    spin.classList.remove('show');
-  }, 100);
-}
-
-// --- GÉNÉRATION PPTX via PptxGenJS ------------------------------------------
 async function generatePPTX() {
   const btn = document.getElementById('btnPPTX');
   const spin = document.getElementById('spinPPTX');
@@ -2162,7 +1900,7 @@ async function generatePPTX() {
     const an1Net = simData.length && !simData[0].lisse ? Math.round(simData[0].net / 12) : Math.round(gains30/30/12);
     const defMax = simData.length && !simData[0].lisse ? Math.min(...simData.map(x=>x.cum)) : 0;
     const retour = simData.length && !simData[0].lisse ? (simData.find(x=>x.cum>=0)||{y:'?'}).y : 'An 3';
-    const modeLabel = simMode === 'lisse' ? 'Lisse 30 ans' : 'Reel an/an';
+    const modeLabel = simMode === 'lisse' ? 'Lisse ' + (simData.length||30) + ' ans' : 'Reel an/an';
 
     const pres = new PptxGenJS();
     pres.layout = 'LAYOUT_16x9';
@@ -2179,7 +1917,7 @@ async function generatePPTX() {
     s1.addText((d.power||'?')+' kWc -- '+(d.clientName||'Client'), {x:0.5,y:1.9,w:7.5,h:0.75,fontSize:32,bold:true,color:C.gold,fontFace:'Calibri'});
     s1.addText('Etude economique -- '+modeLabel+'\nInflation '+document.getElementById('slInflation').value+' %/an - Production 100 % an 1 - Degradation 0,4 %/an', {x:0.5,y:2.75,w:8,h:0.8,fontSize:13,color:C.lgray,italic:true,fontFace:'Calibri'});
     s1.addShape(pres.shapes.RECTANGLE, {x:0,y:4.35,w:10,h:1.27,fill:{color:C.green},line:{color:C.green}});
-    const stats1 = [{v:(d.power||'?')+' kWc',l:'Puissance'},{v:(d.panels||'?')+' panneaux',l:'Francilienne 500 W'},{v:fmt(parseInt(d.prodReal||0))+' kWh',l:'Production an 1'},{v:'~'+fmt(Math.round(gains30/1000))+'k EUR',l:'Gains nets 30 ans'}];
+    const stats1 = [{v:(d.power||'?')+' kWc',l:'Puissance'},{v:(d.panels||'?')+' panneaux',l:'Francilienne 500 W'},{v:fmt(parseInt(d.prodReal||0))+' kWh',l:'Production an 1'},{v:'~'+fmt(Math.round(gains30/1000))+'k EUR',l:'Gains nets '+(simData.length||30)+' ans'}];
     stats1.forEach((st,i)=>{ const x=0.5+i*2.45; s1.addText(st.v,{x,y:4.42,w:2.2,h:0.5,fontSize:18,bold:true,color:C.gold,align:'center',fontFace:'Calibri'}); s1.addText(st.l,{x,y:4.88,w:2.2,h:0.3,fontSize:9,color:C.white,align:'center',fontFace:'Calibri'}); });
 
     // SLIDE 2 -- HYPOTHESES
@@ -2201,7 +1939,7 @@ async function generatePPTX() {
     s3.addText((an1Val>=0?'+':'')+an1Val+' EUR/mois', {x:0.5,y:1.6,w:3.8,h:0.9,fontSize:36,bold:true,color:C.gold,align:'center',fontFace:'Calibri'});
     s3.addText('soit '+(simData[0]&&simData[0].net?fmtSign(simData[0].net):fmtSign(an1Val*12))+' EUR/an', {x:0.5,y:2.48,w:3.8,h:0.4,fontSize:12,color:C.lime,align:'center',italic:true,fontFace:'Calibri'});
     // KPIs droite
-    const kpis3 = [{l:'Deficit cumule max',v:(defMax<0?fmtSign(defMax):'+0')+' EUR'},{l:'Retour positif cumule',v:'An '+retour},{l:'Gains nets 30 ans',v:'~'+fmt(Math.round(gains30/1000))+'k EUR'}];
+    const kpis3 = [{l:'Deficit cumule max',v:(defMax<0?fmtSign(defMax):'+0')+' EUR'},{l:'Retour positif cumule',v:'An '+retour},{l:'Gains nets '+(simData.length||30)+' ans',v:'~'+fmt(Math.round(gains30/1000))+'k EUR'}];
     kpis3.forEach((k,i)=>{ s3.addShape(pres.shapes.RECTANGLE,{x:4.8,y:0.95+i*1.35,w:4.8,h:1.2,fill:{color:C.dark},line:{color:C.gold,width:0.8}}); s3.addText(k.l,{x:4.9,y:1.0+i*1.35,w:4.6,h:0.45,fontSize:10,color:C.lgray,fontFace:'Calibri'}); s3.addText(k.v,{x:4.9,y:1.42+i*1.35,w:4.6,h:0.6,fontSize:22,bold:true,color:C.gold,fontFace:'Calibri'}); });
 
     // SLIDE 4 -- TABLEAU 30 ANS (mode reel uniquement)
@@ -2228,7 +1966,7 @@ async function generatePPTX() {
     s5.addShape(pres.shapes.RECTANGLE, {x:0,y:0,w:10,h:5.625,fill:{color:C.dark},line:{color:C.dark}});
     s5.addShape(pres.shapes.RECTANGLE, {x:0,y:0,w:10,h:0.75,fill:{color:C.green},line:{color:C.green}});
     s5.addText('Synthese & Engagements Arnaud Energies', {x:0.4,y:0,w:9,h:0.75,fontSize:20,bold:true,color:C.white,valign:'middle',fontFace:'Calibri'});
-    const kpis5 = [{v:fmtSign(defMax)+' EUR',l:'Deficit cumule max'},{v:'An '+retour,l:'Retour positif cumule'},{v:'~'+fmt(Math.round(gains30/1000))+'k EUR',l:'Gains nets 30 ans'},{v:fmtSign(an1Net)+' EUR/mois',l:'Resultat an 1'}];
+    const kpis5 = [{v:fmtSign(defMax)+' EUR',l:'Deficit cumule max'},{v:'An '+retour,l:'Retour positif cumule'},{v:'~'+fmt(Math.round(gains30/1000))+'k EUR',l:'Gains nets '+(simData.length||30)+' ans'},{v:fmtSign(an1Net)+' EUR/mois',l:'Resultat an 1'}];
     kpis5.forEach((k,i)=>{ const x=0.3+i*2.42; s5.addShape(pres.shapes.RECTANGLE,{x,y:0.95,w:2.2,h:1.5,fill:{color:'FFFFFF',transparency:93},line:{color:C.gold,width:1.5}}); s5.addText(k.v,{x,y:1.03,w:2.2,h:0.7,fontSize:22,bold:true,color:C.gold,align:'center',fontFace:'Calibri'}); s5.addText(k.l,{x,y:1.7,w:2.2,h:0.65,fontSize:9,color:C.white,align:'center',fontFace:'Calibri'}); });
     const engagements5 = ['Garantie de production : si inferieure de 5 %, panneaux supplementaires a titre gracieux','Maintenance incluse dans la mensualite : nettoyage, controle, interventions sous 48h a 10 jours','Assurance decimale n 037.0012525.S179337 + RC Pro + RGE QualiPV 500 (n QPV/72354)','Installation K2 Systems en surimposition : aucune atteinte a la structure ni a l etancheite'];
     engagements5.forEach((e,i)=>{ const ey=2.62+i*0.68; s5.addShape(pres.shapes.RECTANGLE,{x:0.3,y:ey,w:0.3,h:0.5,fill:{color:C.green},line:{color:C.green}}); s5.addText('OK',{x:0.3,y:ey,w:0.3,h:0.5,fontSize:9,bold:true,color:C.white,align:'center',valign:'middle',margin:0}); s5.addText(e,{x:0.7,y:ey,w:9.1,h:0.5,fontSize:10,color:C.white,valign:'middle',fontFace:'Calibri'}); });
@@ -2383,8 +2121,7 @@ async function generateDOCX() {
       numbering:{config:[{reference:'bullets',levels:[{level:0,format:'bullet',text:'?',alignment:AlignmentType.LEFT,style:{paragraph:{indent:{left:720,hanging:360}}}}]}]}
     });
 
-    const buffer = await Packer.toBuffer(doc);
-    const blob = new Blob([buffer], {type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});
+    const blob = await Packer.toBlob(doc);
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = 'Contrat_Installation_'+(d.clientName||'client').replace(/\s+/g,'_')+'.docx';
@@ -2669,27 +2406,6 @@ function generatePDF() {
 
 // --- GÉNÉRATION PPTX ---------------------------------------------------------
 // --- GÉNÉRATION PPTX ---------------------------------------------------------
-async function generatePPTX() {
-  const btn = document.getElementById('btnPPTX');
-  const spin = document.getElementById('spinPPTX');
-  btn.disabled = true; spin.classList.add('show');
-  showToast('Generation de la presentation en cours...', 8000);
-  try {
-    const d = getData();
-    const gains30 = simData.length ? (simData[0].lisse ? simData[0].gainsNets30 : simData[simData.length - 1].cum) : 0;
-    const modeLabel = simMode === 'lisse' ? 'Lisse 30 ans' : 'Reel an/an';
-    const gainMoyAn = Math.round(gains30 / 30);
-    const gainMoyMois = Math.round(gains30 / 30 / 12);
-    const defMax = simMode === 'reel' ? Math.min(...simData.map(x => x.cum)) : null;
-    const retour = simMode === 'reel' ? (simData.find(x => x.cum >= 0) || {y: '?'}).y : null;
-    const an1Net = simMode === 'reel' && simData[0] ? Math.round(simData[0].net / 12) : null;
-    showToast('Proposition PDF disponible. PPTX : connectez l app a votre serveur Node.');
-  } catch(err) { showToast('Erreur : ' + err.message); }
-  btn.disabled = false; spin.classList.remove('show');
-}
-
-// --- GÉNÉRATION DOCX --------------
-
 async function generateAll() {
   showToast('Génération des 4 documents...', 12000);
   try { generatePDF(); } catch(e) { console.error('PDF:', e); }
@@ -3328,8 +3044,7 @@ function generateMaintenance() {
         }]
       });
 
-      const buffer = await Packer.toBuffer(doc);
-      const blob = new Blob([buffer], {type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});
+      const blob = await Packer.toBlob(doc);
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
       a.download = 'Contrat_Maintenance_' + (d.clientName||'client').replace(/\s+/g,'_') + '.docx';
@@ -3708,21 +3423,23 @@ async function estimateProductionPVGIS() {
     const pvgisUrl = 'https://re.jrc.ec.europa.eu/api/v5_2/PVcalc?' + pvgisParams;
     const json = await fetchPVGIS(pvgisUrl);
     if (!json || !json.outputs) throw new Error('PVGIS inaccessible');
-    const prodAnnuelle = Math.round(json.outputs.totals.fixed.E_y);
+    // E_y de PVGIS avec loss=14 EST DÉJÀ la production nette réelle (pertes système incluses)
+    // Ne pas re-multiplier par un PR : ce serait compter les pertes deux fois
+    const prodNette = Math.round(json.outputs.totals.fixed.E_y);
 
-    // Renseigner les champs :
-    // - prodReal = production 100% PVGIS
-    // - prodStudy = production avec PR 92% (prodReal × 0.92) pour cohérence avec format AutoCalSol
-    const prodStudy = Math.round(prodAnnuelle * 0.92);
-    document.getElementById('prodStudy').value = prodStudy;
+    // prodStudy = production nette (celle utilisée pour les calculs économiques)
+    document.getElementById('prodStudy').value = prodNette;
     document.getElementById('prodStudy').classList.add('extracted');
+    // prodReal = même valeur (PVGIS donne directement le net)
     if (document.getElementById('prodReal')) {
-      document.getElementById('prodReal').value = prodAnnuelle;
+      document.getElementById('prodReal').value = prodNette;
       document.getElementById('prodReal').classList.add('extracted');
     }
     calcProd100 && calcProd100();
 
-    showToast('Production PVGIS : ' + prodAnnuelle.toLocaleString('fr-FR') + ' kWh/an (100%)');
+    // Ratio de production pour info (kWh/kWc/an)
+    const ratioKWc = Math.round(prodNette / power);
+    showToast('Production PVGIS : ' + prodNette.toLocaleString('fr-FR') + ' kWh/an (' + ratioKWc + ' kWh/kWc)');
   } catch(err) {
     showToast('Erreur PVGIS : ' + err.message);
   }
@@ -3766,6 +3483,24 @@ function syncConsoMensuel() {
 }
 
 // ─── SUGGESTION DE PUISSANCE (conso × 0,4 / production kWc PVGIS) ──────────────
+
+// Adapter l'UI selon le type de projet (autoconso vs revente)
+function updateProjectTypeUI() {
+  const pt = document.getElementById('projectType') ? document.getElementById('projectType').value : 'autoconso';
+  const isRevente = pt === 'revente';
+  const consoPanel = document.getElementById('consoAnnuelPanel');
+  const consoMensuel = document.getElementById('consoMensuelPanel');
+  const btnSuggest = document.getElementById('btnSuggestPower');
+  // En revente, la conso n'est pas pertinente
+  if (consoPanel) consoPanel.style.opacity = isRevente ? '0.4' : '1';
+  if (btnSuggest) {
+    btnSuggest.innerHTML = isRevente
+      ? '<span class="spinner" id="spinSuggestPower"></span>⚡ Selon toit'
+      : '<span class="spinner" id="spinSuggestPower"></span>⚡ Suggérer';
+  }
+  if (typeof runSim === 'function') runSim();
+}
+
 async function suggestPower() {
   const btn = document.getElementById('btnSuggestPower');
   const spin = document.getElementById('spinSuggestPower');
@@ -3773,6 +3508,35 @@ async function suggestPower() {
   if (spin) spin.classList.add('show');
 
   const conso = parseFloat(document.getElementById('consumption').value) || 0;
+  const projectType = document.getElementById('projectType') ? document.getElementById('projectType').value : 'autoconso';
+  const isRevente = projectType === 'revente';
+
+  // En revente totale : pas de consommation, on dimensionne selon la surface de toit disponible
+  if (isRevente) {
+    const surfaceToit = window._roofSurface || 0;
+    if (!surfaceToit) {
+      showToast('Revente totale : mesurez d abord le toit sur la carte pour dimensionner');
+      if (btn) btn.disabled = false;
+      if (spin) spin.classList.remove('show');
+      return;
+    }
+    // Puissance max selon surface (1 panneau = 2,2 m² = 0,5 kWc)
+    const nbPan = Math.floor(surfaceToit / 2.2);
+    const kWcMax = (nbPan * 0.5).toFixed(1);
+    document.getElementById('power').value = kWcMax;
+    document.getElementById('power').classList.add('extracted');
+    const panE = document.getElementById('panels');
+    if (panE) { panE.value = nbPan; panE.classList.add('extracted'); }
+    const surfE = document.getElementById('pvSurface');
+    if (surfE) surfE.value = Math.round(nbPan * 2.2);
+    showToast('Revente totale : ' + kWcMax + ' kWc (' + nbPan + ' panneaux) selon surface toit ' + Math.round(surfaceToit) + ' m²');
+    if (typeof runSim === 'function') runSim();
+    if (btn) btn.disabled = false;
+    if (spin) spin.classList.remove('show');
+    return;
+  }
+
+  // Autoconsommation : nécessite la consommation
   if (!conso) {
     showToast('Saisissez d abord la consommation du site');
     if (btn) btn.disabled = false;
