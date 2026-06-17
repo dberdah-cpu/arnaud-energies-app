@@ -12,6 +12,7 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <!-- docx charge dynamiquement -->
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet">
 <style>
@@ -408,6 +409,13 @@ td:first-child { text-align: center; font-weight: 600; color: var(--gray); }
     <div>
       <div class="logo-sub">Générateur de dossiers photovoltaïques</div>
     </div>
+  </div>
+  <div id="authZone" style="display:flex;gap:8px;align-items:center;margin-left:auto">
+    <span id="userEmail" style="font-size:12px;color:var(--gray)"></span>
+    <button class="btn btn-sm btn-outline" id="btnDossiers" onclick="openDossiers()" style="display:none">📂 Mes dossiers</button>
+    <button class="btn btn-sm btn-primary" id="btnSaveDossier" onclick="saveDossier()" style="display:none">💾 Enregistrer</button>
+    <button class="btn btn-sm btn-outline" id="btnLogin" onclick="openAuthModal()">🔐 Connexion</button>
+    <button class="btn btn-sm btn-outline" id="btnLogout" onclick="logoutUser()" style="display:none">Déconnexion</button>
   </div>
   <div class="header-steps">
     <div class="step-dot active" id="dot1" onclick="goStep(1)">1</div>
@@ -1056,6 +1064,42 @@ td:first-child { text-align: center; font-weight: 600; color: var(--gray); }
     </div>
   </div>
 </main>
+
+<!-- MODALE CONNEXION -->
+<div id="authModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:10000;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:16px;padding:2rem;width:90%;max-width:400px;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+    <h2 style="margin:0 0 0.5rem;color:var(--dark)" id="authTitle">Connexion</h2>
+    <p style="color:var(--gray);font-size:13px;margin:0 0 1.5rem">Accédez à vos dossiers enregistrés</p>
+    <div style="margin-bottom:1rem">
+      <label style="font-size:13px;font-weight:600;color:var(--dark)">Email</label>
+      <input id="authEmail" type="email" class="field-input" placeholder="vous@exemple.fr" style="width:100%;margin-top:4px">
+    </div>
+    <div style="margin-bottom:1.5rem">
+      <label style="font-size:13px;font-weight:600;color:var(--dark)">Mot de passe</label>
+      <input id="authPassword" type="password" class="field-input" placeholder="••••••••" style="width:100%;margin-top:4px">
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-primary" onclick="loginUser()" style="flex:1">Se connecter</button>
+      <button class="btn btn-outline" onclick="signupUser()" style="flex:1">Créer un compte</button>
+    </div>
+    <button class="btn btn-outline" onclick="closeAuthModal()" style="width:100%;margin-top:8px">Annuler</button>
+    <p id="authError" style="color:#c00;font-size:12px;margin:8px 0 0;display:none"></p>
+  </div>
+</div>
+
+<!-- MODALE DOSSIERS -->
+<div id="dossiersModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:10000;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:16px;padding:2rem;width:90%;max-width:700px;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+      <h2 style="margin:0;color:var(--dark)">📂 Dossiers enregistrés</h2>
+      <button class="btn btn-outline btn-sm" onclick="closeDossiers()">✕ Fermer</button>
+    </div>
+    <input id="dossierSearch" type="text" class="field-input" placeholder="🔍 Rechercher par nom de client..." style="width:100%;margin-bottom:1rem" oninput="filterDossiers()">
+    <div id="dossiersList" style="display:flex;flex-direction:column;gap:8px">
+      <p style="color:var(--gray);text-align:center;padding:2rem">Chargement...</p>
+    </div>
+  </div>
+</div>
 
 <div class="toast" id="toast"></div>
 
@@ -3728,6 +3772,268 @@ async function suggestPower() {
   if (btn) btn.disabled = false;
   if (spin) spin.classList.remove('show');
 }
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  SUPABASE — Authentification et stockage des dossiers
+// ═══════════════════════════════════════════════════════════════════════════
+const SUPABASE_URL = 'https://gymckwyahpilmdoxlvaw.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_raCMbMk33ufWNGJEkVva1w_VEPzV_lD';
+let sb = null;
+let currentUser = null;
+let allDossiers = [];
+
+function initSupabase() {
+  if (sb) return sb;
+  if (typeof supabase === 'undefined' || !supabase.createClient) {
+    console.warn('SDK Supabase pas encore chargé');
+    return null;
+  }
+  sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  // Vérifier si déjà connecté
+  sb.auth.getSession().then(({ data }) => {
+    if (data && data.session) {
+      currentUser = data.session.user;
+      updateAuthUI();
+    }
+  });
+  return sb;
+}
+
+function updateAuthUI() {
+  const logged = !!currentUser;
+  document.getElementById('userEmail').textContent = logged ? currentUser.email : '';
+  document.getElementById('btnLogin').style.display = logged ? 'none' : 'inline-flex';
+  document.getElementById('btnLogout').style.display = logged ? 'inline-flex' : 'none';
+  document.getElementById('btnDossiers').style.display = logged ? 'inline-flex' : 'none';
+  document.getElementById('btnSaveDossier').style.display = logged ? 'inline-flex' : 'none';
+}
+
+function openAuthModal() {
+  initSupabase();
+  document.getElementById('authModal').style.display = 'flex';
+  document.getElementById('authError').style.display = 'none';
+}
+function closeAuthModal() {
+  document.getElementById('authModal').style.display = 'none';
+}
+function showAuthError(msg) {
+  const el = document.getElementById('authError');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+async function loginUser() {
+  if (!initSupabase()) { showAuthError('Connexion à Supabase impossible'); return; }
+  const email = document.getElementById('authEmail').value.trim();
+  const pwd = document.getElementById('authPassword').value;
+  if (!email || !pwd) { showAuthError('Email et mot de passe requis'); return; }
+  const { data, error } = await sb.auth.signInWithPassword({ email, password: pwd });
+  if (error) { showAuthError(error.message); return; }
+  currentUser = data.user;
+  updateAuthUI();
+  closeAuthModal();
+  showToast('Connecté : ' + currentUser.email);
+}
+
+async function signupUser() {
+  if (!initSupabase()) { showAuthError('Connexion à Supabase impossible'); return; }
+  const email = document.getElementById('authEmail').value.trim();
+  const pwd = document.getElementById('authPassword').value;
+  if (!email || !pwd) { showAuthError('Email et mot de passe requis'); return; }
+  if (pwd.length < 6) { showAuthError('Mot de passe : 6 caractères minimum'); return; }
+  const { data, error } = await sb.auth.signUp({ email, password: pwd });
+  if (error) { showAuthError(error.message); return; }
+  if (data.user && !data.session) {
+    showAuthError('Compte créé ! Vérifiez votre email pour confirmer (ou désactivez la confirmation dans Supabase).');
+    return;
+  }
+  currentUser = data.user;
+  updateAuthUI();
+  closeAuthModal();
+  showToast('Compte créé et connecté !');
+}
+
+async function logoutUser() {
+  if (sb) await sb.auth.signOut();
+  currentUser = null;
+  updateAuthUI();
+  showToast('Déconnecté');
+}
+
+// ─── ENREGISTRER UN DOSSIER ───────────────────────────────────────────────────
+async function saveDossier() {
+  if (!currentUser) { openAuthModal(); return; }
+  if (!initSupabase()) { showToast('Supabase indisponible'); return; }
+
+  const d = getData();
+  if (!d.clientName && !d.clientAddress) {
+    showToast('Renseignez au moins le nom ou l adresse du client');
+    return;
+  }
+
+  // Rassembler TOUTES les données du dossier
+  const dossierData = {
+    fields: d,
+    simMode: simMode,
+    finMode: finMode,
+    studyDuration: document.getElementById('studyDuration') ? document.getElementById('studyDuration').value : 30,
+    projectType: document.getElementById('projectType') ? document.getElementById('projectType').value : 'autoconso',
+    sliders: {
+      tarif: document.getElementById('slTarif') ? document.getElementById('slTarif').value : null,
+      inflation: document.getElementById('slInflation') ? document.getElementById('slInflation').value : null,
+      mensual: document.getElementById('slMensual') ? document.getElementById('slMensual').value : null,
+      surplus: document.getElementById('slSurplus') ? document.getElementById('slSurplus').value : null,
+    },
+    roofImage: window._roofImageB64 || null,
+    roofSurface: window._roofSurface || null,
+    roofPanelsMax: window._roofPanelsMax || null,
+    gps: document.getElementById('gpsCoords') ? document.getElementById('gpsCoords').value : null,
+    consoMensuelle: window._consoMensuelle || null,
+    savedAt: new Date().toISOString(),
+  };
+
+  const partage = confirm('Voulez-vous PARTAGER ce dossier avec les autres utilisateurs ?\n\nOK = partagé   |   Annuler = privé');
+
+  showToast('Enregistrement...', 5000);
+  const { data, error } = await sb.from('dossiers').insert({
+    user_id: currentUser.id,
+    client_name: d.clientName || 'Sans nom',
+    client_address: d.clientAddress || '',
+    power: parseFloat(d.power) || 0,
+    project_type: dossierData.projectType,
+    data: dossierData,
+    is_shared: partage,
+  }).select();
+
+  if (error) { showToast('Erreur : ' + error.message); console.error(error); return; }
+  showToast('Dossier enregistré' + (partage ? ' et partagé !' : ' !'));
+}
+
+// ─── LISTER LES DOSSIERS ──────────────────────────────────────────────────────
+async function openDossiers() {
+  if (!currentUser) { openAuthModal(); return; }
+  if (!initSupabase()) { showToast('Supabase indisponible'); return; }
+  document.getElementById('dossiersModal').style.display = 'flex';
+  document.getElementById('dossiersList').innerHTML = '<p style="color:var(--gray);text-align:center;padding:2rem">Chargement...</p>';
+
+  const { data, error } = await sb.from('dossiers').select('*').order('updated_at', { ascending: false });
+  if (error) {
+    document.getElementById('dossiersList').innerHTML = '<p style="color:#c00;text-align:center">Erreur : ' + error.message + '</p>';
+    return;
+  }
+  allDossiers = data || [];
+  renderDossiers(allDossiers);
+}
+
+function renderDossiers(list) {
+  const container = document.getElementById('dossiersList');
+  if (!list || list.length === 0) {
+    container.innerHTML = '<p style="color:var(--gray);text-align:center;padding:2rem">Aucun dossier enregistré pour le moment.</p>';
+    return;
+  }
+  container.innerHTML = list.map(function(dos) {
+    const isMine = dos.user_id === currentUser.id;
+    const date = new Date(dos.updated_at).toLocaleDateString('fr-FR');
+    const badge = dos.is_shared ? '<span style="background:#E8F5E9;color:#2E7D32;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600">PARTAGÉ</span>' : '';
+    const mine = isMine ? '' : '<span style="background:#FFF3E0;color:#E65100;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600">AUTRE UTILISATEUR</span>';
+    return '<div style="border:1px solid var(--border);border-radius:10px;padding:12px;display:flex;justify-content:space-between;align-items:center">' +
+      '<div style="flex:1">' +
+        '<div style="font-weight:600;color:var(--dark)">' + (dos.client_name || 'Sans nom') + ' ' + badge + ' ' + mine + '</div>' +
+        '<div style="font-size:12px;color:var(--gray)">' + (dos.client_address || '') + ' • ' + (dos.power || '?') + ' kWc • ' + date + '</div>' +
+      '</div>' +
+      '<div style="display:flex;gap:6px">' +
+        '<button class="btn btn-sm btn-primary" onclick="loadDossier(\'' + dos.id + '\')">Ouvrir</button>' +
+        (isMine ? '<button class="btn btn-sm btn-outline" onclick="deleteDossier(\'' + dos.id + '\')" style="color:#c00">🗑️</button>' : '') +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+function filterDossiers() {
+  const q = document.getElementById('dossierSearch').value.toLowerCase();
+  const filtered = allDossiers.filter(function(d) {
+    return (d.client_name || '').toLowerCase().includes(q) || (d.client_address || '').toLowerCase().includes(q);
+  });
+  renderDossiers(filtered);
+}
+
+function closeDossiers() {
+  document.getElementById('dossiersModal').style.display = 'none';
+}
+
+// ─── CHARGER UN DOSSIER ───────────────────────────────────────────────────────
+async function loadDossier(id) {
+  const dos = allDossiers.find(function(x) { return x.id === id; });
+  if (!dos) return;
+  const dd = dos.data;
+  const f = dd.fields || {};
+
+  // Remplir tous les champs
+  function setF(id, val) { const el = document.getElementById(id); if (el && val != null) el.value = val; }
+  setF('clientName', f.clientName);
+  setF('clientAddress', f.clientAddress);
+  setF('clientCode', f.clientCode);
+  setF('propRef', f.propRef);
+  setF('propDate', f.propDate);
+  setF('power', f.power);
+  setF('panels', f.panels);
+  setF('prodStudy', f.prodStudy);
+  setF('prodReal', f.prodReal);
+  setF('consumption', f.consumption);
+  setF('elecPrice', f.elecPrice);
+  setF('monthly', f.monthly);
+  setF('duration', f.duration);
+  setF('cashPrice', f.cashPrice);
+  setF('autoconsoRate', f.autoconsoRate);
+  setF('surplusRate', f.surplusRate);
+  setF('surplusPrice', f.surplusPrice);
+  setF('orientation', f.orientation);
+  setF('inclination', f.inclination);
+  setF('studyDuration', dd.studyDuration);
+  setF('gpsCoords', dd.gps);
+
+  // Type de projet
+  const pt = document.getElementById('projectType');
+  if (pt && dd.projectType) pt.value = dd.projectType;
+
+  // Sliders
+  if (dd.sliders) {
+    setF('slTarif', dd.sliders.tarif);
+    setF('slInflation', dd.sliders.inflation);
+    setF('slMensual', dd.sliders.mensual);
+    setF('slSurplus', dd.sliders.surplus);
+  }
+
+  // Image toiture + données
+  if (dd.roofImage) window._roofImageB64 = dd.roofImage;
+  if (dd.roofSurface) window._roofSurface = dd.roofSurface;
+  if (dd.roofPanelsMax) window._roofPanelsMax = dd.roofPanelsMax;
+  if (dd.consoMensuelle) window._consoMensuelle = dd.consoMensuelle;
+
+  // Mode fin
+  if (dd.finMode) { finMode = dd.finMode; if (typeof setFinMode === 'function') setFinMode(dd.finMode); }
+  if (dd.simMode) { simMode = dd.simMode; if (typeof setSimMode === 'function') setSimMode(dd.simMode); }
+
+  closeDossiers();
+  goStep(1);
+  if (typeof runSim === 'function') runSim();
+  showToast('Dossier « ' + (dos.client_name || 'Sans nom') + ' » chargé');
+}
+
+// ─── SUPPRIMER UN DOSSIER ─────────────────────────────────────────────────────
+async function deleteDossier(id) {
+  if (!confirm('Supprimer définitivement ce dossier ?')) return;
+  const { error } = await sb.from('dossiers').delete().eq('id', id);
+  if (error) { showToast('Erreur : ' + error.message); return; }
+  showToast('Dossier supprimé');
+  openDossiers(); // recharger la liste
+}
+
+// Init Supabase au chargement
+window.addEventListener('load', function() {
+  setTimeout(initSupabase, 500);
+});
 
 // Charger docx de facon non bloquante
 window.addEventListener('load', function() {
