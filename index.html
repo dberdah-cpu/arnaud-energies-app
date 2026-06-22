@@ -2728,6 +2728,34 @@ function syncNightPct() {
   document.getElementById('nightPct').value = 100 - day;
 }
 
+
+// Générer un profil de production horaire synthétique (8760h) si PVGIS indisponible
+// Basé sur une courbe solaire journalière typique et la production annuelle cible
+function genererProfilHoraireSynthetique(prodAnnuelleKWh) {
+  const hourly = [];
+  // Facteurs saisonniers mensuels (production relative par mois, total = 12)
+  const moisFacteur = [0.4, 0.6, 0.9, 1.2, 1.4, 1.5, 1.55, 1.4, 1.1, 0.75, 0.45, 0.35];
+  const joursMois = [31,28,31,30,31,30,31,31,30,31,30,31];
+  // Courbe horaire typique (0h-23h), pic à midi
+  const heureFacteur = [0,0,0,0,0,0,0.05,0.2,0.45,0.7,0.9,1.0,1.0,0.95,0.8,0.6,0.4,0.2,0.05,0,0,0,0,0];
+  const sommeHeure = heureFacteur.reduce((a,b)=>a+b,0);
+
+  // Normaliser pour atteindre prodAnnuelle
+  let totalRelatif = 0;
+  for (let m = 0; m < 12; m++) totalRelatif += moisFacteur[m] * joursMois[m] * sommeHeure;
+  const kWhParUnite = prodAnnuelleKWh / totalRelatif;
+
+  for (let m = 0; m < 12; m++) {
+    for (let j = 0; j < joursMois[m]; j++) {
+      for (let h = 0; h < 24; h++) {
+        const kWh = moisFacteur[m] * heureFacteur[h] * kWhParUnite;
+        hourly.push({ P: kWh * 1000 }); // P en W (sera divisé par 1000 dans simulateBattery)
+      }
+    }
+  }
+  return hourly;
+}
+
 async function calcBattery() {
   const btn = document.getElementById('btnCalcBattery');
   const spin = document.getElementById('spinBattery');
@@ -2752,7 +2780,9 @@ async function calcBattery() {
 
   const power = parseFloat(document.getElementById('power').value) || 35;
   const consumption = parseFloat(document.getElementById('consumption').value) || 50000;
-  const dayPct = parseFloat(document.getElementById('dayPct').value) / 100;
+  const dayPctEl = document.getElementById('dayPct');
+  let dayPct = dayPctEl ? parseFloat(dayPctEl.value) / 100 : 0.7;
+  if (isNaN(dayPct) || dayPct <= 0 || dayPct > 1) dayPct = 0.7; // défaut 70% jour
   const nightPct = 1 - dayPct;
   const surplusPrice = parseFloat(document.getElementById('surplusPrice').value) || 0.069;
   const elecPrice = parseFloat(document.getElementById('elecPrice').value) || 0.26;
@@ -2771,42 +2801,27 @@ async function calcBattery() {
     const lonClean = lon.toString().replace(/[NSEW°]/gi,'').trim();
 
     // Essayer v5_3 puis v5_2 en fallback
-    const pvgisParams = `lat=${latClean}&lon=${lonClean}&startyear=2020&endyear=2020&pvcalculation=1&peakpower=${power}&loss=14&angle=${inclination}&aspect=${azimuth}&outputformat=json&browser=1`;
+    const pvgisParams = `lat=${latClean}&lon=${lonClean}&startyear=2020&endyear=2020&pvcalculation=1&peakpower=${power}&loss=14&angle=${inclination}&aspect=${azimuth}&outputformat=json`;
     const pvgisBase = `https://re.jrc.ec.europa.eu/api/v5_2/seriescalc?${pvgisParams}`;
-    const corsProxies = [
-      'https://corsproxy.io/?' + encodeURIComponent(pvgisBase),
-      'https://api.allorigins.win/raw?url=' + encodeURIComponent(pvgisBase),
-      'https://cors-anywhere.herokuapp.com/' + pvgisBase,
-    ];
-    
-    let resp = null;
-    // Essai direct d'abord (fonctionne en local)
-    try {
-      resp = await Promise.race([
-        fetch(pvgisBase),
-        new Promise((_,rej) => setTimeout(() => rej(new Error('timeout')), 5000))
-      ]);
-      if (!resp.ok) resp = null;
-    } catch(e) { resp = null; }
-    
-    // Si bloqué par CORS, essayer les proxies
-    if (!resp) {
-      status.textContent = '[GPS] Connexion directe bloquée, essai via proxy...';
-      for (const proxyUrl of corsProxies) {
-        try {
-          resp = await Promise.race([
-            fetch(proxyUrl),
-            new Promise((_,rej) => setTimeout(() => rej(new Error('timeout')), 8000))
-          ]);
-          if (resp.ok) { status.textContent = '[OK] Proxy PVGIS connecté...'; break; }
-          resp = null;
-        } catch(e) { resp = null; }
+
+    // Utiliser le helper robuste fetchPVGIS (4 proxies)
+    status.textContent = '[GPS] Connexion PVGIS (données horaires)...';
+    let json = await fetchPVGIS(pvgisBase);
+
+    // Vérifier que les données horaires sont présentes et valides
+    if (!json || !json.outputs || !json.outputs.hourly || !json.outputs.hourly.length) {
+      // PVGIS inaccessible : générer un profil horaire synthétique à partir de la production annuelle
+      status.textContent = '[!] PVGIS horaire indisponible, estimation synthétique...';
+      const prodAnnuelle = (parseFloat(document.getElementById('prodReal') ? document.getElementById('prodReal').value : 0)) || (power * 1100);
+      pvgisData = genererProfilHoraireSynthetique(prodAnnuelle);
+    } else {
+      pvgisData = json.outputs.hourly; // 8760 points
+      // Vérifier que les points ont bien une propriété P (puissance W)
+      if (pvgisData[0] && typeof pvgisData[0].P === 'undefined') {
+        const prodAnnuelle = (parseFloat(document.getElementById('prodReal') ? document.getElementById('prodReal').value : 0)) || (power * 1100);
+        pvgisData = genererProfilHoraireSynthetique(prodAnnuelle);
       }
     }
-    if (!resp || !resp.ok) throw new Error('PVGIS inaccessible -- vérifiez votre connexion. Coordonnées : ' + latClean + ', ' + lonClean);
-    const json = await resp.json();
-    if (!json.outputs || !json.outputs.hourly) throw new Error('Réponse PVGIS invalide -- ' + JSON.stringify(json).slice(0,200));
-    pvgisData = json.outputs.hourly; // 8760 points
 
     status.textContent = `[OK] ${pvgisData.length} heures récupérées -- simulation en cours...`;
 
@@ -2979,7 +2994,7 @@ function renderBatteryResults(results, noBat, optimalSize) {
       <td>+${gainKWh.toLocaleString('fr-FR')} kWh</td>
       <td>${r.autoconsoRate} %</td>
       <td style="color:var(--green);font-weight:600">+${Math.round(gainVsNoBat).toLocaleString('fr-FR')} EUR</td>
-      <td style="color:var(--green);font-weight:600">+${Math.round(gainVsNoBat*30).toLocaleString('fr-FR')} EUR</td>
+      <td style="color:var(--green);font-weight:600">+${Math.round(gainVsNoBat*(parseInt(document.getElementById('studyDuration')?document.getElementById('studyDuration').value:30)||30)).toLocaleString('fr-FR')} EUR</td>
       <td>${badge}</td>
     </tr>`;
   });
@@ -2990,7 +3005,8 @@ function renderBatteryResults(results, noBat, optimalSize) {
   document.getElementById('batKpiSize').textContent = optimalSize + ' kWh';
   document.getElementById('batKpiAutoconso').textContent = optResult.autoconsoRate + ' %';
   document.getElementById('batKpiGainAn').textContent = '+' + Math.round(gain).toLocaleString('fr-FR') + ' EUR/an';
-  document.getElementById('batKpiGain30').textContent = '+' + Math.round(gain*30).toLocaleString('fr-FR') + ' EUR';
+  const dureeB = parseInt(document.getElementById('studyDuration') ? document.getElementById('studyDuration').value : 30) || 30;
+  document.getElementById('batKpiGain30').textContent = '+' + Math.round(gain*dureeB).toLocaleString('fr-FR') + ' EUR';
 
   // Pré-remplir capacité retenue
   document.getElementById('batterySize').value = optimalSize;
