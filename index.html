@@ -2808,20 +2808,32 @@ async function calcBattery() {
     status.textContent = '[GPS] Connexion PVGIS (données horaires)...';
     let json = await fetchPVGIS(pvgisBase);
 
-    // Vérifier que les données horaires sont présentes et valides
-    if (!json || !json.outputs || !json.outputs.hourly || !json.outputs.hourly.length) {
-      // PVGIS inaccessible : générer un profil horaire synthétique à partir de la production annuelle
-      status.textContent = '[!] PVGIS horaire indisponible, estimation synthétique...';
-      const prodAnnuelle = (parseFloat(document.getElementById('prodReal') ? document.getElementById('prodReal').value : 0)) || (power * 1100);
-      pvgisData = genererProfilHoraireSynthetique(prodAnnuelle);
-    } else {
-      pvgisData = json.outputs.hourly; // 8760 points
-      // Vérifier que les points ont bien une propriété P (puissance W)
-      if (pvgisData[0] && typeof pvgisData[0].P === 'undefined') {
-        const prodAnnuelle = (parseFloat(document.getElementById('prodReal') ? document.getElementById('prodReal').value : 0)) || (power * 1100);
-        pvgisData = genererProfilHoraireSynthetique(prodAnnuelle);
+    // Production annuelle cible pour le fallback
+    const prodCible = (parseFloat(document.getElementById('prodReal') ? document.getElementById('prodReal').value : 0))
+      || (parseFloat(document.getElementById('prodStudy') ? document.getElementById('prodStudy').value : 0))
+      || (power * 1100);
+
+    // Vérifier que les données horaires PVGIS sont exploitables
+    let pvgisValide = false;
+    if (json && json.outputs && json.outputs.hourly && json.outputs.hourly.length > 100) {
+      // Tester si au moins quelques points ont une propriété P numérique
+      const echantillon = json.outputs.hourly.slice(0, 100);
+      const pointsValides = echantillon.filter(p => p && typeof p.P === 'number' && !isNaN(p.P)).length;
+      console.log('PVGIS hourly: ' + json.outputs.hourly.length + ' points, ' + pointsValides + '/100 avec P valide');
+      if (pointsValides > 50) {
+        pvgisData = json.outputs.hourly;
+        pvgisValide = true;
       }
     }
+
+    if (!pvgisValide) {
+      console.log('PVGIS horaire inexploitable -> profil synthétique (prod cible: ' + prodCible + ' kWh)');
+      status.textContent = '[i] Estimation synthétique (production ' + Math.round(prodCible/1000) + ' MWh)...';
+      pvgisData = genererProfilHoraireSynthetique(prodCible);
+    }
+
+    // Garde-fou final : s'assurer qu'aucun point n'a P invalide
+    pvgisData = pvgisData.map(p => ({ P: (p && typeof p.P === 'number' && !isNaN(p.P)) ? p.P : 0 }));
 
     status.textContent = `[OK] ${pvgisData.length} heures récupérées -- simulation en cours...`;
 
@@ -2868,6 +2880,10 @@ async function calcBattery() {
 }
 
 function buildConsumptionProfile(annualKWh, dayPct, nightPct) {
+  // Garde-fous contre NaN
+  if (!annualKWh || isNaN(annualKWh) || annualKWh <= 0) annualKWh = 50000;
+  if (!dayPct || isNaN(dayPct)) dayPct = 0.7;
+  if (!nightPct || isNaN(nightPct)) nightPct = 0.3;
   // Répartition horaire sur 8760h avec variation saisonnière
   // Jour = 8h-20h (12h), Nuit = 20h-8h (12h)
   // Variation saisonnière : hiver +20% conso, été -10%
@@ -2901,7 +2917,8 @@ function buildConsumptionProfile(annualKWh, dayPct, nightPct) {
   }
 
   // Normaliser pour que la somme = annualKWh
-  return hourly.map(w => w * annualKWh / totalWeight);
+  if (totalWeight <= 0) return new Array(8760).fill(annualKWh / 8760);
+  return hourly.map(w => { const v = w * annualKWh / totalWeight; return isNaN(v) ? 0 : v; });
 }
 
 function simulateBattery(pvgisHourly, consumption, batteryKWh, elecPrice, surplusPrice) {
@@ -2913,8 +2930,8 @@ function simulateBattery(pvgisHourly, consumption, batteryKWh, elecPrice, surplu
   let totalProduction = 0;
 
   for (let h = 0; h < pvgisHourly.length; h++) {
-    const prod = (pvgisHourly[h].P || 0) / 1000; // W -> kWh
-    const conso = consumption[h];
+    const prod = (pvgisHourly[h] && !isNaN(pvgisHourly[h].P) ? pvgisHourly[h].P : 0) / 1000; // W -> kWh
+    const conso = (consumption[h] && !isNaN(consumption[h])) ? consumption[h] : 0;
     totalProduction += prod;
 
     let balance = prod - conso;
