@@ -2613,6 +2613,13 @@ function getData() {
     monthly: document.getElementById('monthly').value,
     duration: document.getElementById('duration').value,
     cashPrice: document.getElementById('cashPrice').value,
+    autoconsoRate: document.getElementById('autoconsoRate') ? document.getElementById('autoconsoRate').value : '',
+    surplusRate: document.getElementById('surplusRate') ? document.getElementById('surplusRate').value : '',
+    surplusPrice: document.getElementById('surplusPrice') ? document.getElementById('surplusPrice').value : '',
+    orientation: document.getElementById('orientation') ? document.getElementById('orientation').value : '',
+    inclination: document.getElementById('inclination') ? document.getElementById('inclination').value : '',
+    projectType: document.getElementById('projectType') ? document.getElementById('projectType').value : 'autoconso',
+    studyDuration: document.getElementById('studyDuration') ? document.getElementById('studyDuration').value : '',
   };
 }
 
