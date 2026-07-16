@@ -503,6 +503,9 @@ td:first-child { text-align: center; font-weight: 600; color: var(--gray); }
             <button class="btn btn-outline" onclick="suggestPower()" id="btnSuggestPower" style="white-space:nowrap;padding:0.5rem 0.7rem;font-size:11px">
               <span class="spinner" id="spinSuggestPower"></span>⚡ Suggérer
             </button>
+            <button class="btn btn-outline" onclick="viserAutosuffisance()" id="btnAutosuff" style="white-space:nowrap;padding:0.5rem 0.7rem;font-size:11px;display:none">
+              <span class="spinner" id="spinAutosuff"></span>🎯 Autosuffisance
+            </button>
           </div>
         </div>
         <div class="field-group">
@@ -573,6 +576,7 @@ td:first-child { text-align: center; font-weight: 600; color: var(--gray); }
           <select class="field-input" id="projectType" onchange="updateProjectTypeUI()">
             <option value="autoconso">Autoconsommation + surplus</option>
             <option value="revente">Revente totale (tout vendu)</option>
+            <option value="batterievirtuelle">Autoconso + batterie virtuelle</option>
           </select>
         </div>
         <div class="field-group">
@@ -582,6 +586,22 @@ td:first-child { text-align: center; font-weight: 600; color: var(--gray); }
         <div class="field-group">
           <label class="field-label">Surface PV (m²)</label>
           <input class="field-input" id="pvSurface" placeholder="150" type="number">
+        </div>
+        <div class="field-group" id="bvAbonnementGroup" style="display:none">
+          <label class="field-label">Abonnement batterie virtuelle (€ HT/mois) — à titre indicatif</label>
+          <input class="field-input" id="bvAbonnement" placeholder="36" type="number" step="1" value="36" oninput="runSim()">
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--gray);margin-top:6px;cursor:pointer">
+            <input type="checkbox" id="bvCompterAbo" onchange="runSim()" style="width:auto;margin:0">
+            Déduire l'abonnement du bilan (sinon affiché à titre indicatif seulement)
+          </label>
+        </div>
+        <div class="field-group" id="bvAchemGroup" style="display:none">
+          <label class="field-label">Frais acheminement récupération (€/kWh) — à titre indicatif</label>
+          <input class="field-input" id="bvAcheminement" placeholder="0.095" type="number" step="0.001" value="0.095" oninput="runSim()">
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--gray);margin-top:6px;cursor:pointer">
+            <input type="checkbox" id="bvCompterAchem" onchange="runSim()" style="width:auto;margin:0">
+            Déduire les frais d'acheminement du bilan
+          </label>
         </div>
         <div class="field-group">
           <label class="field-label">Orientation</label>
@@ -935,6 +955,7 @@ td:first-child { text-align: center; font-weight: 600; color: var(--gray); }
           <select class="field-input" id="projectType" onchange="updateProjectTypeUI()">
             <option value="autoconso">Autoconsommation + surplus</option>
             <option value="revente">Revente totale (tout vendu)</option>
+            <option value="batterievirtuelle">Autoconso + batterie virtuelle</option>
           </select>
         </div>
         <div class="field-group">
@@ -1098,6 +1119,29 @@ td:first-child { text-align: center; font-weight: 600; color: var(--gray); }
     <div id="dossiersList" style="display:flex;flex-direction:column;gap:8px">
       <p style="color:var(--gray);text-align:center;padding:2rem">Chargement...</p>
     </div>
+  </div>
+</div>
+
+<!-- MODALE CHOIX SCÉNARIO -->
+<div id="scenarioModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:10000;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:16px;padding:2rem;width:90%;max-width:640px;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+    <h2 style="margin:0 0 0.5rem;color:var(--dark)">Choix du dimensionnement</h2>
+    <p style="color:var(--gray);font-size:13px;margin:0 0 1.5rem">Deux stratégies selon l'objectif du client</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div style="border:2px solid var(--border);border-radius:12px;padding:1.2rem">
+        <div style="font-size:12px;font-weight:600;color:var(--green);text-transform:uppercase">Optimum économique</div>
+        <div style="font-size:28px;font-weight:700;color:var(--dark);margin:8px 0" id="scOptKwc">— kWc</div>
+        <div style="font-size:12px;color:var(--gray);line-height:1.6" id="scOptDetail"></div>
+        <button class="btn btn-outline btn-full" onclick="appliquerScenario('optimum')" style="margin-top:12px">Choisir l'optimum</button>
+      </div>
+      <div style="border:2px solid var(--green);border-radius:12px;padding:1.2rem;background:#F4FAF5">
+        <div style="font-size:12px;font-weight:600;color:var(--green);text-transform:uppercase">🎯 Autosuffisance</div>
+        <div style="font-size:28px;font-weight:700;color:var(--dark);margin:8px 0" id="scAutoKwc">— kWc</div>
+        <div style="font-size:12px;color:var(--gray);line-height:1.6" id="scAutoDetail"></div>
+        <button class="btn btn-primary btn-full" onclick="appliquerScenario('autosuffisance')" style="margin-top:12px">Viser l'autosuffisance</button>
+      </div>
+    </div>
+    <button class="btn btn-outline" onclick="document.getElementById('scenarioModal').style.display='none'" style="width:100%;margin-top:16px">Annuler</button>
   </div>
 </div>
 
@@ -1599,6 +1643,71 @@ function syncAdvancedFromStep1() {
   }
 }
 
+
+// ─── CALCUL BATTERIE VIRTUELLE (décalage saisonnier été -> hiver) ─────────────
+// Retourne le bilan économique annuel pour l'année donnée (avec tarif inflaté)
+function calcBatterieVirtuelle(prodAnnuelle, consoAnnuelle, tarifAchat, prixReventeSurplus) {
+  // Profils mensuels typiques (part du total annuel)
+  const prodMensuelle = [0.035,0.05,0.08,0.105,0.12,0.13,0.135,0.12,0.095,0.065,0.04,0.025];
+  // Si conso mensuelle réelle saisie, l'utiliser
+  let consoM_parts;
+  if (window._consoMensuelle && window._consoMensuelle.length === 12 && window._consoMensuelle.some(v => v > 0)) {
+    const total = window._consoMensuelle.reduce((s,v) => s+v, 0);
+    consoM_parts = window._consoMensuelle.map(v => v / total);
+  } else {
+    consoM_parts = [0.115,0.105,0.095,0.075,0.065,0.055,0.05,0.05,0.065,0.085,0.11,0.13];
+  }
+
+  let surplusTotal = 0, deficitTotal = 0, autoconsoDirecte = 0;
+  for (let m = 0; m < 12; m++) {
+    const prodM = prodAnnuelle * prodMensuelle[m];
+    const consoM = consoAnnuelle * consoM_parts[m];
+    surplusTotal += Math.max(0, prodM - consoM);
+    deficitTotal += Math.max(0, consoM - prodM);
+    autoconsoDirecte += Math.min(prodM, consoM);
+  }
+  // Le surplus d'été couvre le déficit d'hiver (dans la limite disponible)
+  const recupere = Math.min(surplusTotal, deficitTotal);
+  const surplusVendu = surplusTotal - recupere;   // excédent vendu à bas prix
+  const deficitReseau = deficitTotal - recupere;  // reste acheté au réseau (0 si couvert)
+
+  const fraisAchem = parseFloat(document.getElementById('bvAcheminement') ? document.getElementById('bvAcheminement').value : 0.095) || 0.095;
+  const abonnementMois = parseFloat(document.getElementById('bvAbonnement') ? document.getElementById('bvAbonnement').value : 0) || 0;
+  // L'abonnement n'est compté dans le bilan QUE si la case est cochée
+  const compterAbo = document.getElementById('bvCompterAbo') ? document.getElementById('bvCompterAbo').checked : false;
+
+  // Les frais d'acheminement sont comptés seulement si la case est cochée
+  const compterAchem = document.getElementById('bvCompterAchem') ? document.getElementById('bvCompterAchem').checked : false;
+
+  // Bilan économique
+  const ecoAutoconso = autoconsoDirecte * tarifAchat;              // économie autoconso directe
+  // Énergie récupérée : valorisée au prix d'achat plein, ou moins l'acheminement si coché
+  const ecoRecupere = recupere * (tarifAchat - (compterAchem ? fraisAchem : 0));
+  const revenuSurplus = surplusVendu * prixReventeSurplus;        // surplus excédentaire vendu
+  const coutReseau = deficitReseau * tarifAchat;                  // achat réseau résiduel
+  const coutAbonnement = abonnementMois * 12;                     // à titre indicatif
+
+  // Bilan : ni acheminement ni abonnement déduits par défaut (potentiel maximum)
+  const bilanNet = ecoAutoconso + ecoRecupere + revenuSurplus - coutReseau - (compterAbo ? coutAbonnement : 0);
+  // Valeurs indicatives (toujours calculées, affichées séparément)
+  const abonnementIndicatif = Math.round(coutAbonnement);
+  const acheminementIndicatif = Math.round(recupere * fraisAchem);
+  const autosuffisance = consoAnnuelle > 0 ? Math.min(100, (autoconsoDirecte + recupere) / consoAnnuelle * 100) : 0;
+
+  return {
+    bilanNet: Math.round(bilanNet),
+    autosuffisance: Math.round(autosuffisance * 10) / 10,
+    autoconsoDirecte: Math.round(autoconsoDirecte),
+    recupere: Math.round(recupere),
+    surplusVendu: Math.round(surplusVendu),
+    deficitReseau: Math.round(deficitReseau),
+    ecoRecupere: Math.round(ecoRecupere),
+    coutAbonnement: Math.round(coutAbonnement),
+    abonnementIndicatif: abonnementIndicatif,
+    acheminementIndicatif: acheminementIndicatif,
+  };
+}
+
 function runSim() {
   // Mettre à jour le libellé des années dans le bouton mode lissé
   const _sy = document.getElementById('studyDuration') ? document.getElementById('studyDuration').value : 30;
@@ -1642,9 +1751,15 @@ function runSim() {
         const yearsInflated = y - Math.max(priceLock, inflStart - 1);
         tarif = yearsInflated > 0 ? tarif0 * (1 + inflation) ** yearsInflated : tarif0;
       }
-      const rev = projectType === 'revente'
-        ? prod * surplusPrice
-        : prod * acRate * tarif + prod * surplusRate * surplusPrice;
+      let rev;
+      if (projectType === 'revente') {
+        rev = prod * surplusPrice;
+      } else if (projectType === 'batterievirtuelle') {
+        const consoAnnL = parseFloat(document.getElementById('consumption').value) || 30000;
+        rev = calcBatterieVirtuelle(prod, consoAnnL, tarif, surplusPrice).bilanNet;
+      } else {
+        rev = prod * acRate * tarif + prod * surplusRate * surplusPrice;
+      }
       const fin = y <= finYears ? annualFin : 0;
       totalNets += rev - fin;
     }
@@ -1682,9 +1797,17 @@ function runSim() {
         const yearsInflated = y - Math.max(priceLock, inflStart - 1);
         tarif = yearsInflated > 0 ? tarif0 * (1 + inflation) ** yearsInflated : tarif0;
       }
-      const revPV = projectTypeR === 'revente'
-        ? Math.round(prod * surplusPrice)
-        : Math.round(prod * acRate * tarif + prod * surplusRate * surplusPrice);
+      let revPV;
+      if (projectTypeR === 'revente') {
+        revPV = Math.round(prod * surplusPrice);
+      } else if (projectTypeR === 'batterievirtuelle') {
+        // Batterie virtuelle : bilan saisonnier avec le tarif de l'année (inflaté)
+        const consoAnn = parseFloat(document.getElementById('consumption').value) || 30000;
+        const bv = calcBatterieVirtuelle(prod, consoAnn, tarif, surplusPrice);
+        revPV = bv.bilanNet;
+      } else {
+        revPV = Math.round(prod * acRate * tarif + prod * surplusRate * surplusPrice);
+      }
       const revBat = Math.round(getBatteryGain()); // gain annuel batterie (constant)
       const rev = revPV + revBat;
       const fin = y <= finYears ? annualFin : 0;
@@ -2075,7 +2198,9 @@ async function generatePPTX() {
     s3.addText((an1Val>=0?'+':'')+an1Val+' EUR/mois', {x:0.5,y:1.55,w:3.8,h:0.9,fontSize:34,bold:true,color:C.gold,align:'center',fontFace:'Calibri'});
     s3.addText('soit '+(simData[0]&&simData[0].net?fmtSign(simData[0].net):fmtSign(an1Val*12))+' EUR/an', {x:0.5,y:2.45,w:3.8,h:0.4,fontSize:12,color:C.lime,align:'center',italic:true,fontFace:'Calibri'});
     // === Données détaillées du projet (remplace déficit/retour) ===
-    const isReventeS3 = document.getElementById('projectType') && document.getElementById('projectType').value === 'revente';
+    const projTypeS3 = document.getElementById('projectType') ? document.getElementById('projectType').value : 'autoconso';
+    const isReventeS3 = projTypeS3 === 'revente';
+    const isBVS3 = projTypeS3 === 'batterievirtuelle';
     const investS3 = finMode === 'cash' ? (parseFloat(d.cashPrice)||0) : (parseFloat(d.monthly)||0)*(parseInt(d.duration)||0);
     const finYearsS3 = finMode === 'cash' ? 0 : Math.ceil((parseInt(d.duration)||84)/12);
     const dureeS3 = simData.length || 20;
@@ -2095,6 +2220,13 @@ async function generatePPTX() {
     if (isReventeS3) {
       s3.addText('Revente totale', {x:4.95,y:1.05,w:4.5,h:0.35,fontSize:12,bold:true,color:C.green,fontFace:'Calibri'});
       s3.addText('100 % de la production vendue au réseau', {x:4.95,y:1.42,w:4.5,h:0.4,fontSize:13,bold:true,color:C.dark,fontFace:'Calibri'});
+    } else if (isBVS3) {
+      // Batterie virtuelle : afficher le taux d'autosuffisance
+      const consoBV = parseFloat(document.getElementById('consumption').value) || 30000;
+      const prodBV = parseFloat(d.prodReal || d.prodStudy) || 0;
+      const bvRes = calcBatterieVirtuelle(prodBV, consoBV, parseFloat(d.elecPrice)||0.167, parseFloat(d.surplusPrice)||0.01);
+      s3.addText('Batterie virtuelle — Autosuffisance', {x:4.95,y:1.05,w:4.5,h:0.35,fontSize:11,bold:true,color:C.green,fontFace:'Calibri'});
+      s3.addText(bvRes.autosuffisance + ' % des besoins couverts', {x:4.95,y:1.42,w:4.5,h:0.4,fontSize:15,bold:true,color:C.dark,fontFace:'Calibri'});
     } else {
       s3.addText('Répartition de la production', {x:4.95,y:1.05,w:4.5,h:0.35,fontSize:11,bold:true,color:C.green,fontFace:'Calibri'});
       s3.addText('Autoconso ' + (d.autoconsoRate||'--') + ' %   •   Surplus ' + (100-parseFloat(d.autoconsoRate||0)).toFixed(1) + ' %', {x:4.95,y:1.42,w:4.5,h:0.4,fontSize:13,bold:true,color:C.dark,fontFace:'Calibri'});
@@ -3706,6 +3838,15 @@ function syncConsoMensuel() {
 function updateProjectTypeUI() {
   const pt = document.getElementById('projectType') ? document.getElementById('projectType').value : 'autoconso';
   const isRevente = pt === 'revente';
+  const isBV = pt === 'batterievirtuelle';
+  // Afficher/masquer les champs batterie virtuelle
+  const bvAb = document.getElementById('bvAbonnementGroup');
+  const bvAc = document.getElementById('bvAchemGroup');
+  if (bvAb) bvAb.style.display = isBV ? 'block' : 'none';
+  if (bvAc) bvAc.style.display = isBV ? 'block' : 'none';
+  // Bouton autosuffisance visible uniquement en batterie virtuelle
+  const btnAs = document.getElementById('btnAutosuff');
+  if (btnAs) btnAs.style.display = isBV ? 'inline-flex' : 'none';
   const consoPanel = document.getElementById('consoAnnuelPanel');
   const consoMensuel = document.getElementById('consoMensuelPanel');
   const btnSuggest = document.getElementById('btnSuggestPower');
@@ -3716,6 +3857,120 @@ function updateProjectTypeUI() {
       ? '<span class="spinner" id="spinSuggestPower"></span>⚡ Selon toit'
       : '<span class="spinner" id="spinSuggestPower"></span>⚡ Suggérer';
   }
+  if (typeof runSim === 'function') runSim();
+}
+
+
+// ─── SCÉNARIOS : OPTIMUM ÉCONOMIQUE vs AUTOSUFFISANCE ─────────────────────────
+async function viserAutosuffisance() {
+  const btn = document.getElementById('btnAutosuff');
+  const spin = document.getElementById('spinAutosuff');
+  if (btn) btn.disabled = true;
+  if (spin) spin.classList.add('show');
+
+  try {
+    const conso = parseFloat(document.getElementById('consumption').value) || 0;
+    if (!conso) { showToast('Saisissez d abord la consommation'); return; }
+
+    // Production par kWc (PVGIS ou défaut)
+    let prodParKWc = 1160;
+    const gpsEl = document.getElementById('gpsCoords');
+    if (gpsEl && gpsEl.value) {
+      const parts = gpsEl.value.split(/[,;]/).map(s => parseFloat(s)).filter(n => !isNaN(n));
+      if (parts.length >= 2) {
+        const params = `lat=${parts[0]}&lon=${parts[1]}&peakpower=1&loss=14&angle=30&aspect=0&outputformat=json&pvtechchoice=crystSi&mountingplace=building`;
+        const json = await fetchPVGIS('https://re.jrc.ec.europa.eu/api/v5_2/PVcalc?' + params);
+        if (json && json.outputs) prodParKWc = Math.round(json.outputs.totals.fixed.E_y);
+      }
+    }
+
+    const prodMensuelle = [0.035,0.05,0.08,0.105,0.12,0.13,0.135,0.12,0.095,0.065,0.04,0.025];
+    let consoM_parts;
+    if (window._consoMensuelle && window._consoMensuelle.length === 12 && window._consoMensuelle.some(v => v > 0)) {
+      const total = window._consoMensuelle.reduce((s,v) => s+v, 0);
+      consoM_parts = window._consoMensuelle.map(v => v / total);
+    } else {
+      consoM_parts = [0.115,0.105,0.095,0.075,0.065,0.055,0.05,0.05,0.065,0.085,0.11,0.13];
+    }
+
+    function bilan(kWc) {
+      const prod = kWc * prodParKWc;
+      let surplus=0, deficit=0, autoDirect=0;
+      for (let m=0;m<12;m++){
+        const p=prod*prodMensuelle[m], c=conso*consoM_parts[m];
+        surplus+=Math.max(0,p-c); deficit+=Math.max(0,c-p); autoDirect+=Math.min(p,c);
+      }
+      const recupere=Math.min(surplus,deficit);
+      return { prod, surplus, deficit, autoDirect, recupere,
+        tauxACDirecte: prod>0 ? autoDirect/prod*100 : 0,
+        autosuff: conso>0 ? (autoDirect+recupere)/conso*100 : 0 };
+    }
+
+    // SCÉNARIO OPTIMUM : plus grande puissance gardant l'autoconso directe >= 90%
+    let kWcOptimum = 0;
+    for (let k = 2; k <= 60; k += 0.5) {
+      if (bilan(k).tauxACDirecte >= 90) kWcOptimum = k;
+    }
+    if (kWcOptimum === 0) kWcOptimum = 6;
+    const panOpt = Math.round(kWcOptimum / 0.5);
+    kWcOptimum = panOpt * 0.5;
+
+    // SCÉNARIO AUTOSUFFISANCE : plus petite puissance atteignant ~100% (marge +10%)
+    let kWcAuto = 0;
+    for (let k = 2; k <= 80; k += 0.5) {
+      if (bilan(k).autosuff >= 99) { kWcAuto = k; break; }
+    }
+    kWcAuto = kWcAuto * 1.10; // marge sécurité
+    const panAuto = Math.ceil(kWcAuto / 0.5);
+    kWcAuto = panAuto * 0.5;
+
+    const bOpt = bilan(kWcOptimum);
+    const bAuto = bilan(kWcAuto);
+
+    // Afficher la comparaison dans une boîte de dialogue de choix
+    window._scenarioOptimum = { kWc: kWcOptimum, panneaux: panOpt, prod: Math.round(bOpt.prod), autosuff: bOpt.autosuff, tauxAC: bOpt.tauxACDirecte };
+    window._scenarioAuto = { kWc: kWcAuto, panneaux: panAuto, prod: Math.round(bAuto.prod), autosuff: bAuto.autosuff, tauxAC: bAuto.tauxACDirecte };
+
+    afficherChoixScenario(bOpt, bAuto, kWcOptimum, kWcAuto, panOpt, panAuto);
+
+  } catch(e) {
+    console.error('Autosuffisance:', e);
+    showToast('Erreur calcul scénarios');
+  } finally {
+    if (btn) btn.disabled = false;
+    if (spin) spin.classList.remove('show');
+  }
+}
+
+// Afficher la modale de choix entre les 2 scénarios
+function afficherChoixScenario(bOpt, bAuto, kWcOpt, kWcAuto, panOpt, panAuto) {
+  const modal = document.getElementById('scenarioModal');
+  if (!modal) return;
+  document.getElementById('scOptKwc').textContent = kWcOpt + ' kWc';
+  document.getElementById('scOptDetail').innerHTML =
+    panOpt + ' panneaux • ' + Math.round(bOpt.prod).toLocaleString('fr-FR') + ' kWh/an<br>' +
+    'Autoconso directe : <b>' + bOpt.tauxACDirecte.toFixed(0) + '%</b><br>' +
+    'Autosuffisance : ' + bOpt.autosuff.toFixed(0) + '%';
+  document.getElementById('scAutoKwc').textContent = kWcAuto + ' kWc';
+  document.getElementById('scAutoDetail').innerHTML =
+    panAuto + ' panneaux • ' + Math.round(bAuto.prod).toLocaleString('fr-FR') + ' kWh/an<br>' +
+    'Autoconso directe : ' + bAuto.tauxACDirecte.toFixed(0) + '%<br>' +
+    'Autosuffisance : <b>' + bAuto.autosuff.toFixed(0) + '%</b>';
+  modal.style.display = 'flex';
+}
+
+// Appliquer le scénario choisi
+function appliquerScenario(type) {
+  const sc = type === 'optimum' ? window._scenarioOptimum : window._scenarioAuto;
+  if (!sc) return;
+  document.getElementById('power').value = sc.kWc;
+  document.getElementById('power').classList.add('extracted');
+  if (document.getElementById('panels')) { document.getElementById('panels').value = sc.panneaux; document.getElementById('panels').classList.add('extracted'); }
+  if (document.getElementById('prodReal')) { document.getElementById('prodReal').value = sc.prod; document.getElementById('prodReal').classList.add('extracted'); }
+  if (document.getElementById('prodStudy')) document.getElementById('prodStudy').value = sc.prod;
+  if (document.getElementById('pvSurface')) document.getElementById('pvSurface').value = Math.round(sc.panneaux * 2.2);
+  document.getElementById('scenarioModal').style.display = 'none';
+  showToast((type === 'optimum' ? 'Optimum économique' : 'Autosuffisance') + ' : ' + sc.kWc + ' kWc appliqué');
   if (typeof runSim === 'function') runSim();
 }
 
@@ -3930,6 +4185,11 @@ async function saveDossier() {
     roofPanelsMax: window._roofPanelsMax || null,
     gps: document.getElementById('gpsCoords') ? document.getElementById('gpsCoords').value : null,
     consoMensuelle: window._consoMensuelle || null,
+    // Champs batterie virtuelle
+    bvAbonnement: document.getElementById('bvAbonnement') ? document.getElementById('bvAbonnement').value : null,
+    bvAcheminement: document.getElementById('bvAcheminement') ? document.getElementById('bvAcheminement').value : null,
+    bvCompterAbo: document.getElementById('bvCompterAbo') ? document.getElementById('bvCompterAbo').checked : false,
+    bvCompterAchem: document.getElementById('bvCompterAchem') ? document.getElementById('bvCompterAchem').checked : false,
     savedAt: new Date().toISOString(),
   };
 
@@ -4035,7 +4295,13 @@ async function loadDossier(id) {
 
   // Type de projet
   const pt = document.getElementById('projectType');
-  if (pt && dd.projectType) pt.value = dd.projectType;
+  if (pt && dd.projectType) { pt.value = dd.projectType; if (typeof updateProjectTypeUI === 'function') updateProjectTypeUI(); }
+
+  // Champs batterie virtuelle
+  if (dd.bvAbonnement != null && document.getElementById('bvAbonnement')) document.getElementById('bvAbonnement').value = dd.bvAbonnement;
+  if (dd.bvAcheminement != null && document.getElementById('bvAcheminement')) document.getElementById('bvAcheminement').value = dd.bvAcheminement;
+  if (document.getElementById('bvCompterAbo')) document.getElementById('bvCompterAbo').checked = !!dd.bvCompterAbo;
+  if (document.getElementById('bvCompterAchem')) document.getElementById('bvCompterAchem').checked = !!dd.bvCompterAchem;
 
   // Sliders
   if (dd.sliders) {
