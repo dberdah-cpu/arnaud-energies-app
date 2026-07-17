@@ -715,7 +715,14 @@ td:first-child { text-align: center; font-weight: 600; color: var(--gray); }
       <div class="fin-panel" id="panelCash">
         <div class="field-group">
           <label class="field-label">Prix comptant HT (€)</label>
-          <input class="field-input" id="cashPrice" placeholder="59780" type="number">
+          <div style="display:flex;gap:6px;align-items:center">
+            <input class="field-input" id="cashPrice" placeholder="59780" type="number" style="flex:1">
+            <button class="btn btn-outline" onclick="calcInvestFromPower(true)" style="white-space:nowrap;padding:0.5rem 0.7rem;font-size:11px" title="Calculer selon puissance × prix/kWc">↻ Auto</button>
+          </div>
+        </div>
+        <div class="field-group" id="prixKWcGroup" style="display:none">
+          <label class="field-label">Prix au kWc HT (€/kWc) — pour autosuffisance</label>
+          <input class="field-input" id="prixKWc" placeholder="1300" type="number" step="10" value="1300" oninput="calcInvestFromPower(false)">
         </div>
         <div class="field-group">
           <label class="field-label">TVA (%)</label>
@@ -1199,7 +1206,7 @@ function goStep(n) {
   });
   document.getElementById('progressFill').style.width = (n * 25) + '%';
   currentStep = n;
-  if (n === 2) updateFinSummary();
+  if (n === 2) { updateFinSummary(); if (typeof updateProjectTypeUI === 'function') updateProjectTypeUI(); }
   if (n === 3) { syncAdvancedFromStep1(); runSim(); }
   if (n === 4) updateRecap();
   window.scrollTo(0, 0);
@@ -1808,7 +1815,8 @@ function runSim() {
       } else {
         revPV = Math.round(prod * acRate * tarif + prod * surplusRate * surplusPrice);
       }
-      const revBat = Math.round(getBatteryGain()); // gain annuel batterie (constant)
+      // En batterie virtuelle, le bilan est déjà complet (pas de batterie physique en plus)
+      const revBat = projectTypeR === 'batterievirtuelle' ? 0 : Math.round(getBatteryGain());
       const rev = revPV + revBat;
       const fin = y <= finYears ? annualFin : 0;
       const net = rev - fin;
@@ -3847,6 +3855,9 @@ function updateProjectTypeUI() {
   // Bouton autosuffisance visible uniquement en batterie virtuelle
   const btnAs = document.getElementById('btnAutosuff');
   if (btnAs) btnAs.style.display = isBV ? 'inline-flex' : 'none';
+  // Champ prix/kWc visible uniquement en batterie virtuelle
+  const pkg = document.getElementById('prixKWcGroup');
+  if (pkg) pkg.style.display = isBV ? 'block' : 'none';
   const consoPanel = document.getElementById('consoAnnuelPanel');
   const consoMensuel = document.getElementById('consoMensuelPanel');
   const btnSuggest = document.getElementById('btnSuggestPower');
@@ -3947,15 +3958,18 @@ function afficherChoixScenario(bOpt, bAuto, kWcOpt, kWcAuto, panOpt, panAuto) {
   const modal = document.getElementById('scenarioModal');
   if (!modal) return;
   document.getElementById('scOptKwc').textContent = kWcOpt + ' kWc';
+  const prixKWcM = parseFloat(document.getElementById('prixKWc') ? document.getElementById('prixKWc').value : 1300) || 1300;
   document.getElementById('scOptDetail').innerHTML =
     panOpt + ' panneaux • ' + Math.round(bOpt.prod).toLocaleString('fr-FR') + ' kWh/an<br>' +
     'Autoconso directe : <b>' + bOpt.tauxACDirecte.toFixed(0) + '%</b><br>' +
-    'Autosuffisance : ' + bOpt.autosuff.toFixed(0) + '%';
+    'Autosuffisance : ' + bOpt.autosuff.toFixed(0) + '%<br>' +
+    'Investissement : <b>' + Math.round(kWcOpt * prixKWcM).toLocaleString('fr-FR') + ' € HT</b>';
   document.getElementById('scAutoKwc').textContent = kWcAuto + ' kWc';
   document.getElementById('scAutoDetail').innerHTML =
     panAuto + ' panneaux • ' + Math.round(bAuto.prod).toLocaleString('fr-FR') + ' kWh/an<br>' +
     'Autoconso directe : ' + bAuto.tauxACDirecte.toFixed(0) + '%<br>' +
-    'Autosuffisance : <b>' + bAuto.autosuff.toFixed(0) + '%</b>';
+    'Autosuffisance : <b>' + bAuto.autosuff.toFixed(0) + '%</b><br>' +
+    'Investissement : <b>' + Math.round(kWcAuto * prixKWcM).toLocaleString('fr-FR') + ' € HT</b>';
   modal.style.display = 'flex';
 }
 
@@ -3969,9 +3983,25 @@ function appliquerScenario(type) {
   if (document.getElementById('prodReal')) { document.getElementById('prodReal').value = sc.prod; document.getElementById('prodReal').classList.add('extracted'); }
   if (document.getElementById('prodStudy')) document.getElementById('prodStudy').value = sc.prod;
   if (document.getElementById('pvSurface')) document.getElementById('pvSurface').value = Math.round(sc.panneaux * 2.2);
+  // Recalculer l'investissement selon la nouvelle puissance
+  if (typeof calcInvestFromPower === 'function') calcInvestFromPower();
   document.getElementById('scenarioModal').style.display = 'none';
-  showToast((type === 'optimum' ? 'Optimum économique' : 'Autosuffisance') + ' : ' + sc.kWc + ' kWc appliqué');
+  const invest = Math.round(sc.kWc * (parseFloat(document.getElementById('prixKWc') ? document.getElementById('prixKWc').value : 1300) || 1300));
+  showToast((type === 'optimum' ? 'Optimum économique' : 'Autosuffisance') + ' : ' + sc.kWc + ' kWc — investissement ' + invest.toLocaleString('fr-FR') + ' € HT');
   if (typeof runSim === 'function') runSim();
+}
+
+
+// Calculer l'investissement selon la puissance × prix au kWc
+function calcInvestFromPower() {
+  const power = parseFloat(document.getElementById('power') ? document.getElementById('power').value : 0) || 0;
+  const prixKWc = parseFloat(document.getElementById('prixKWc') ? document.getElementById('prixKWc').value : 1300) || 1300;
+  if (power > 0) {
+    const invest = Math.round(power * prixKWc);
+    const cashEl = document.getElementById('cashPrice');
+    if (cashEl) { cashEl.value = invest; cashEl.classList.add('extracted'); }
+    if (typeof runSim === 'function') runSim();
+  }
 }
 
 async function suggestPower() {
@@ -4339,6 +4369,7 @@ async function deleteDossier(id) {
 // Init Supabase au chargement
 window.addEventListener('load', function() {
   setTimeout(initSupabase, 500);
+  if (typeof updateProjectTypeUI === 'function') updateProjectTypeUI();
 });
 
 // Charger docx de facon non bloquante
