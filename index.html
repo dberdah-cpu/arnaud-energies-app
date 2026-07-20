@@ -1389,21 +1389,45 @@ function extractAutoCalSol(text) {
 
 
   // -- Puissance kWc -> panneaux + surface --
-  const powMatch = text.match(/(\d+[.,]?\d*)\s*kWc/i);
-  if (powMatch) {
-    const kWc = parseFloat(powMatch[1].replace(',', '.'));
+  // AutoCalSol page 1 : la valeur est suivie du libellé
+  // "Puissance crete de l'installation photovoltaique".
+  // On cible ce libellé en priorité, car "kWc" apparaît plusieurs fois dans le rapport
+  // (puissance par champ PV, tableaux annexes...) et prendre la 1ère occurrence donnait des valeurs fausses.
+  let kWc = null;
+
+  // 1) Valeur juste AVANT le libellé "Puissance crête ..."
+  let m = text.match(/(\d{1,4}(?:[  ]\d{3})*[.,]?\d*)\s*kWc\s*(?:Puissance\s*cr[êe]te)/i);
+  // 2) Sinon, valeur juste APRÈS le libellé
+  if (!m) m = text.match(/Puissance\s*cr[êe]te[^\d]{0,60}?(\d{1,4}(?:[  ]\d{3})*[.,]?\d*)\s*kWc/i);
+  // 3) Dernier recours : 1ère occurrence de kWc (ancien comportement)
+  if (!m) m = text.match(/(\d{1,4}(?:[  ]\d{3})*[.,]?\d*)\s*kWc/i);
+
+  if (m) {
+    const brut = m[1].replace(/[  ]/g, '').replace(',', '.');
+    const val = parseFloat(brut);
+    // Garde-fou : une installation plausible va de 1 à 2000 kWc
+    if (!isNaN(val) && val >= 1 && val <= 2000) kWc = val;
+  }
+
+  if (kWc !== null) {
     set('power', kWc);
     const nbPanneaux = Math.round(kWc / 0.5);   // 1 panneau = 500 Wc
     const surface = Math.round(nbPanneaux * 2.2); // 1 panneau = 2.2 m2
     set('panels', nbPanneaux);
     set('pvSurface', surface);
+    console.log('Puissance extraite AutoCalSol :', kWc, 'kWc');
   }
 
   // -- Production annuelle : "XX,XX MWh" ou "XX XXX kWh" en haut de page 1 --
   // AutoCalSol page 1 : "39,51 MWh" ou "23 031 kWh" dans le bilan énergétique
   // On prend la PREMIÈRE occurrence de production (pas consommation)
   // Production annuelle en MWh (page 1 "Production annuelle" ou page 4)
-  const prodMWhMatch = text.match(/Production\s+annuelle[\s\S]{0,40}?([\d]+[,.]\d+)\s*MWh/i)
+  // Libellé réel AutoCalSol : "XX,XX MWh  Production électrique annuelle de l'installation"
+  // (la valeur précède le libellé). On cible ce motif avant tout repli générique.
+  const prodMWhMatch =
+       text.match(/([\d]+[,.]\d+)\s*MWh\s*(?:Production\s+[ée]lectrique\s+annuelle)/i)
+    || text.match(/Production\s+[ée]lectrique\s+annuelle[^\d]{0,60}?([\d]+[,.]\d+)\s*MWh/i)
+    || text.match(/Production\s+annuelle[\s\S]{0,40}?([\d]+[,.]\d+)\s*MWh/i)
     || text.match(/([\d]+[,.]\d+)\s*MWh/i);
   // Ratio de performance (page 4) pour calculer prodStudy
   const prMatch = text.match(/(?:ratio\s+de\s+performance|performance\s+ratio|PR)[\s:]*([\d]+[,.]?\d*)\s*%/i);
