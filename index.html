@@ -819,8 +819,9 @@ td:first-child { text-align: center; font-weight: 600; color: var(--gray); }
                   <th style="text-align:left">Capacité</th>
                   <th>kWh supplémentaires</th>
                   <th>Nouveau taux autoconso</th>
+                  <th>Coût batterie</th>
                   <th>Gain annuel</th>
-                  <th>Gain <span class="lbl-years">30</span> ans</th>
+                  <th>Gain net <span class="lbl-years">30</span> ans</th>
                   <th>Recommandation</th>
                 </tr>
               </thead>
@@ -1767,9 +1768,14 @@ function runSim() {
       } else {
         rev = prod * acRate * tarif + prod * surplusRate * surplusPrice;
       }
+      // Gain batterie physique (absent en batterie virtuelle, déjà comptée dans bilanNet ci-dessus)
+      if (projectType !== 'batterievirtuelle') rev += getBatteryGain();
       const fin = y <= finYears ? annualFin : 0;
       totalNets += rev - fin;
     }
+
+    // Coût d'achat de la batterie physique, déduit une seule fois (investissement initial)
+    if (projectType !== 'batterievirtuelle') totalNets -= getBatteryCost();
 
     const gainsNets30 = Math.round(totalNets);          // Gains nets 30 ans
     const gainMoyenAnnuel = Math.round(gainsNets30 / 30); // / 30
@@ -1819,7 +1825,9 @@ function runSim() {
       const revBat = projectTypeR === 'batterievirtuelle' ? 0 : Math.round(getBatteryGain());
       const rev = revPV + revBat;
       const fin = y <= finYears ? annualFin : 0;
-      const net = rev - fin;
+      let net = rev - fin;
+      // Coût d'achat de la batterie physique, déduit une seule fois en année 1 (investissement initial)
+      if (y === 1 && projectTypeR !== 'batterievirtuelle') net -= getBatteryCost();
       cum += net;
       simData.push({ y, prod, tarif: Math.round(tarif * 1000) / 1000, rev, fin, net, cum });
     }
@@ -2837,6 +2845,15 @@ document.getElementById('clientCode').value = 'CU' + yy + mm + '-' + seq;
 
 let pvgisData = null;      // Données horaires PVGIS brutes
 let batteryOptim = null;   // Résultats optimisation par taille
+const BATTERY_COST_PER_KWH = 400; // EUR/kWh installé (batterie physique)
+
+function getBatteryCost() {
+  // Coût d'achat/installation de la batterie (investissement one-shot, non financé par défaut)
+  const el = document.getElementById('batteryEnabled');
+  if (!el || !el.checked) return 0;
+  const size = parseFloat(document.getElementById('batterySize').value) || 0;
+  return size * BATTERY_COST_PER_KWH;
+}
 
 function toggleBattery() {
   const enabled = document.getElementById('batteryEnabled').checked;
@@ -2987,14 +3004,16 @@ async function calcBattery() {
     // Générer profil consommation horaire (8760h)
     const hourlyConsumption = buildConsumptionProfile(consumption, dayPct, nightPct);
 
-    // Optimiser pour différentes tailles de batterie
-    const sizes = [5, 10, 15, 20, 25, 30, 40, 50];
+    // Optimiser pour différentes tailles de batterie (0 = référence sans batterie, inclus pour que
+    // toutes les fonctions en aval (getBatteryGain, updateBatteryChoice...) trouvent la même référence)
+    const sizes = [0, 5, 10, 15, 20, 25, 30, 40, 50];
     batteryOptim = sizes.map(size => simulateBattery(pvgisData, hourlyConsumption, size, elecPrice, surplusPrice));
 
-    // Calculer sans batterie (référence)
-    const noBat = simulateBattery(pvgisData, hourlyConsumption, 0, elecPrice, surplusPrice);
+    // Référence sans batterie
+    const noBat = batteryOptim.find(r => r.size === 0);
+    window._noBatSavings = noBat.totalSavings; // référence pour updateBatteryChoice / getBatteryGain
 
-    // Trouver la taille optimale (meilleur ROI marginal)
+    // Trouver la taille optimale (meilleur gain NET sur la durée d'étude, coût batterie déduit)
     const optimal = findOptimalSize(batteryOptim, noBat, elecPrice);
 
     renderBatteryResults(batteryOptim, noBat, optimal);
@@ -3121,56 +3140,72 @@ function simulateBattery(pvgisHourly, consumption, batteryKWh, elecPrice, surplu
 }
 
 function findOptimalSize(results, noBat, elecPrice) {
-  // Trouver la taille où le gain marginal > seuil rentabilité
-  // Coût approximatif batterie : 400 EUR/kWh installé, amorti sur durée financement
-  const finYears = parseInt(document.getElementById('duration').value) / 12 || 7;
+  // Choisir la taille qui maximise le GAIN NET sur la durée d'étude :
+  // (gain annuel supplémentaire × durée) - coût d'achat de la batterie.
+  // (L'ancienne logique se basait sur un ratio ROI qui favorisait quasi
+  // toujours la plus petite taille à cause des rendements marginaux
+  // décroissants -- ici on compare directement le bénéfice net en euros.)
+  const studyDuration = parseInt(document.getElementById('studyDuration') ? document.getElementById('studyDuration').value : 30) || 30;
   let bestSize = 0;
-  let bestROI = 0;
+  let bestNetGain = 0; // si aucune taille n'est rentable, ne recommander aucune batterie
 
   for (const r of results) {
     if (r.size === 0) continue;
     const gainVsNoBat = r.totalSavings - noBat.totalSavings;
-    const batteryCost = r.size * 400; // ~400 EUR/kWh
-    const roi = gainVsNoBat * finYears / batteryCost; // ROI sur durée financement
-    if (roi > bestROI && gainVsNoBat > 0) {
-      bestROI = roi;
+    const batteryCost = r.size * BATTERY_COST_PER_KWH;
+    const netGainDuration = gainVsNoBat * studyDuration - batteryCost;
+    if (netGainDuration > bestNetGain) {
+      bestNetGain = netGainDuration;
       bestSize = r.size;
     }
   }
-  return bestSize || 10;
+  return bestSize;
 }
 
 function renderBatteryResults(results, noBat, optimalSize) {
   const tbody = document.getElementById('batteryTableBody');
   tbody.innerHTML = '';
+  const dureeB = parseInt(document.getElementById('studyDuration') ? document.getElementById('studyDuration').value : 30) || 30;
 
-  results.forEach(r => {
+  results.filter(r => r.size > 0).forEach(r => {
     const gainVsNoBat = r.totalSavings - noBat.totalSavings;
     const gainKWh = r.totalAutoconso - noBat.totalAutoconso;
+    const batteryCost = r.size * BATTERY_COST_PER_KWH;
+    const netGainDuration = Math.round(gainVsNoBat * dureeB - batteryCost);
     const isOptimal = r.size === optimalSize;
     const badge = isOptimal
       ? '<span class="bat-badge bat-optimal">OK Recommandé</span>'
-      : gainVsNoBat > 500 ? '<span class="bat-badge bat-good">Bon</span>'
+      : netGainDuration <= 0 ? '<span class="bat-badge bat-low">Non rentable</span>'
+      : netGainDuration > 2000 ? '<span class="bat-badge bat-good">Bon</span>'
       : '<span class="bat-badge bat-low">Faible gain</span>';
 
     tbody.innerHTML += `<tr class="${isOptimal ? 'recommended' : ''}">
       <td style="text-align:center;font-weight:700">${r.size} kWh</td>
       <td>+${gainKWh.toLocaleString('fr-FR')} kWh</td>
       <td>${r.autoconsoRate} %</td>
+      <td>${batteryCost.toLocaleString('fr-FR')} EUR</td>
       <td style="color:var(--green);font-weight:600">+${Math.round(gainVsNoBat).toLocaleString('fr-FR')} EUR</td>
-      <td style="color:var(--green);font-weight:600">+${Math.round(gainVsNoBat*(parseInt(document.getElementById('studyDuration')?document.getElementById('studyDuration').value:30)||30)).toLocaleString('fr-FR')} EUR</td>
+      <td style="color:${netGainDuration>=0?'var(--green)':'#C0392B'};font-weight:600">${netGainDuration>=0?'+':''}${netGainDuration.toLocaleString('fr-FR')} EUR</td>
       <td>${badge}</td>
     </tr>`;
   });
 
   // KPIs
-  const optResult = results.find(r => r.size === optimalSize) || results[0];
-  const gain = optResult.totalSavings - noBat.totalSavings;
-  document.getElementById('batKpiSize').textContent = optimalSize + ' kWh';
-  document.getElementById('batKpiAutoconso').textContent = optResult.autoconsoRate + ' %';
-  document.getElementById('batKpiGainAn').textContent = '+' + Math.round(gain).toLocaleString('fr-FR') + ' EUR/an';
-  const dureeB = parseInt(document.getElementById('studyDuration') ? document.getElementById('studyDuration').value : 30) || 30;
-  document.getElementById('batKpiGain30').textContent = '+' + Math.round(gain*dureeB).toLocaleString('fr-FR') + ' EUR';
+  const optResult = results.find(r => r.size === optimalSize);
+  if (!optResult || optimalSize === 0) {
+    document.getElementById('batKpiSize').textContent = 'Aucune (non rentable)';
+    document.getElementById('batKpiAutoconso').textContent = noBat.autoconsoRate + ' %';
+    document.getElementById('batKpiGainAn').textContent = '+0 EUR/an';
+    document.getElementById('batKpiGain30').textContent = '0 EUR';
+  } else {
+    const gain = optResult.totalSavings - noBat.totalSavings;
+    const cost = optimalSize * BATTERY_COST_PER_KWH;
+    const net30 = Math.round(gain * dureeB - cost);
+    document.getElementById('batKpiSize').textContent = optimalSize + ' kWh';
+    document.getElementById('batKpiAutoconso').textContent = optResult.autoconsoRate + ' %';
+    document.getElementById('batKpiGainAn').textContent = '+' + Math.round(gain).toLocaleString('fr-FR') + ' EUR/an';
+    document.getElementById('batKpiGain30').textContent = (net30 >= 0 ? '+' : '') + net30.toLocaleString('fr-FR') + ' EUR net';
+  }
 
   // Pré-remplir capacité retenue
   document.getElementById('batterySize').value = optimalSize;
@@ -3178,28 +3213,39 @@ function renderBatteryResults(results, noBat, optimalSize) {
 }
 
 function updateBatteryChoice() {
-  if (!batteryOptim) return;
+  if (!batteryOptim || batteryOptim.length === 0) {
+    // Pas encore de calcul PVGIS en mémoire (ex : dossier rechargé) --
+    // on affiche un message clair plutôt qu'un "+0" trompeur.
+    const yEl = document.getElementById('batteryGainYear');
+    const mEl = document.getElementById('batteryGainMonth');
+    if (yEl) yEl.value = 'Cliquez sur "Calculer"';
+    if (mEl) mEl.value = '—';
+    return;
+  }
   const size = parseFloat(document.getElementById('batterySize').value) || 0;
-  // Interpoler si la taille n est pas dans les résultats
-  const noBat = batteryOptim.find(r => r.size === 0) ||
-    { totalSavings: batteryOptim[0].totalSavings - (batteryOptim[1].totalSavings - batteryOptim[0].totalSavings) };
 
-  // Trouver la valeur la plus proche
+  // Trouver la valeur la plus proche parmi les tailles simulées
   const closest = batteryOptim.reduce((prev, curr) =>
     Math.abs(curr.size - size) < Math.abs(prev.size - size) ? curr : prev
   );
-  const gainAn = closest.totalSavings - (batteryOptim[0] ? batteryOptim[0].totalSavings : 0);
+  // Gain = économie AVEC cette batterie MOINS économie SANS batterie (référence)
+  const refEntry = batteryOptim.find(r => r.size === 0);
+  const refSavings = (window._noBatSavings != null) ? window._noBatSavings : (refEntry ? refEntry.totalSavings : 0);
+  const gainAn = size === 0 ? 0 : (closest.totalSavings - refSavings);
   const gainMois = Math.round(gainAn / 12);
+  const cost = getBatteryCost();
 
-  document.getElementById('batteryGainYear').value = '+' + Math.round(gainAn).toLocaleString('fr-FR') + ' EUR/an';
-  document.getElementById('batteryGainMonth').value = '+' + gainMois + ' EUR/mois';
+  document.getElementById('batteryGainYear').value = (gainAn >= 0 ? '+' : '') + Math.round(gainAn).toLocaleString('fr-FR') + ' EUR/an' + (cost > 0 ? ' (coût batterie : ' + cost.toLocaleString('fr-FR') + ' EUR)' : '');
+  document.getElementById('batteryGainMonth').value = (gainMois >= 0 ? '+' : '') + gainMois + ' EUR/mois';
 
   // Mettre à jour la simulation avec le gain batterie
   runSim();
 }
 
 function getBatteryGain() {
-  // Retourne le gain annuel de la batterie pour l'intégrer dans le calcul de simulation
+  // Retourne le gain annuel OPÉRATIONNEL de la batterie (économies supplémentaires vs sans
+  // batterie) pour l'intégrer dans le calcul de simulation. Le coût d'achat de la batterie
+  // est déduit séparément, une seule fois, dans runSim() via getBatteryCost().
   if (!document.getElementById('batteryEnabled').checked) return 0;
   if (!batteryOptim || batteryOptim.length === 0) return 0;
   const size = parseFloat(document.getElementById('batterySize').value) || 0;
@@ -3207,10 +3253,9 @@ function getBatteryGain() {
   const closest = batteryOptim.reduce((prev, curr) =>
     Math.abs(curr.size - size) < Math.abs(prev.size - size) ? curr : prev
   );
-  // Gain vs premier résultat (sans batterie = size 0 dans notre sim)
-  const ref = batteryOptim.find(r => r.size === 0);
-  if (!ref) return 0;
-  return closest.totalSavings - ref.totalSavings;
+  const refEntry = batteryOptim.find(r => r.size === 0);
+  const refSavings = (window._noBatSavings != null) ? window._noBatSavings : (refEntry ? refEntry.totalSavings : 0);
+  return closest.totalSavings - refSavings;
 }
 
 
@@ -4220,6 +4265,10 @@ async function saveDossier() {
     bvAcheminement: document.getElementById('bvAcheminement') ? document.getElementById('bvAcheminement').value : null,
     bvCompterAbo: document.getElementById('bvCompterAbo') ? document.getElementById('bvCompterAbo').checked : false,
     bvCompterAchem: document.getElementById('bvCompterAchem') ? document.getElementById('bvCompterAchem').checked : false,
+    // Champs batterie physique (les données horaires PVGIS ne sont pas sauvegardées --
+    // il faudra recliquer sur "Calculer" après chargement pour régénérer le tableau)
+    batteryEnabled: document.getElementById('batteryEnabled') ? document.getElementById('batteryEnabled').checked : false,
+    batterySize: document.getElementById('batterySize') ? document.getElementById('batterySize').value : null,
     savedAt: new Date().toISOString(),
   };
 
@@ -4351,10 +4400,26 @@ async function loadDossier(id) {
   if (dd.finMode) { finMode = dd.finMode; if (typeof setFinMode === 'function') setFinMode(dd.finMode); }
   if (dd.simMode) { simMode = dd.simMode; if (typeof setSimMode === 'function') setSimMode(dd.simMode); }
 
+  // Batterie physique -- on restaure la case et la taille, mais le calcul PVGIS horaire
+  // doit être relancé manuellement (les données brutes ne sont pas sauvegardées en base)
+  batteryOptim = null;
+  window._noBatSavings = null;
+  if (document.getElementById('batteryEnabled')) {
+    document.getElementById('batteryEnabled').checked = !!dd.batteryEnabled;
+    toggleBattery();
+  }
+  if (dd.batterySize != null && document.getElementById('batterySize')) {
+    document.getElementById('batterySize').value = dd.batterySize;
+  }
+
   closeDossiers();
   goStep(1);
   if (typeof runSim === 'function') runSim();
-  showToast('Dossier « ' + (dos.client_name || 'Sans nom') + ' » chargé');
+  if (dd.batteryEnabled) {
+    showToast('Dossier « ' + (dos.client_name || 'Sans nom') + ' » chargé -- cliquez sur "Calculer la batterie optimale" pour rafraîchir les gains batterie');
+  } else {
+    showToast('Dossier « ' + (dos.client_name || 'Sans nom') + ' » chargé');
+  }
 }
 
 // ─── SUPPRIMER UN DOSSIER ─────────────────────────────────────────────────────
