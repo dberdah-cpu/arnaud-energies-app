@@ -798,6 +798,21 @@ td:first-child { text-align: center; font-weight: 600; color: var(--gray); }
           </div>
         </div>
 
+        <!-- Prix de la batterie (utilisé pour le coût, la recommandation et l'amortissement) -->
+        <div class="fields-grid" style="grid-template-columns:repeat(2,1fr);margin-bottom:1rem">
+          <div class="field-group">
+            <label class="field-label">Prix batterie installée (€ HT/kWh)</label>
+            <input class="field-input" id="batteryPricePerKWh" placeholder="400" type="number" step="10" value="400" oninput="updateBatteryChoice()">
+          </div>
+          <div class="field-group">
+            <label class="field-label">Financement de la batterie</label>
+            <select class="field-input" id="batteryFinanceMode" onchange="runSim()">
+              <option value="auto">Comme les panneaux (recommandé)</option>
+              <option value="cash">Payée comptant en année 1</option>
+            </select>
+          </div>
+        </div>
+
         <!-- Bouton calcul PVGIS -->
         <div style="text-align:center;margin-bottom:1.5rem">
           <button class="btn btn-primary" onclick="calcBattery()" id="btnCalcBattery">
@@ -817,7 +832,8 @@ td:first-child { text-align: center; font-weight: 600; color: var(--gray); }
               <thead>
                 <tr>
                   <th style="text-align:left">Capacité</th>
-                  <th>kWh supplémentaires</th>
+                  <th>Surplus revendu en moins</th>
+                  <th>Autoconso en plus</th>
                   <th>Nouveau taux autoconso</th>
                   <th>Coût batterie</th>
                   <th>Gain annuel</th>
@@ -827,6 +843,11 @@ td:first-child { text-align: center; font-weight: 600; color: var(--gray); }
               </thead>
               <tbody id="batteryTableBody"></tbody>
             </table>
+            <p style="font-size:12px;color:var(--gray);margin:10px 2px 0;line-height:1.6">
+              <b>Principe :</b> la batterie ne produit pas d'énergie — elle transforme du surplus
+              (revendu à faible prix) en autoconsommation valorisée au tarif d'achat de l'électricité.
+              Le gain correspond à cet écart de valorisation, diminué des pertes de charge/décharge (~10%).
+            </p>
           </div>
 
           <!-- KPIs batterie -->
@@ -855,10 +876,6 @@ td:first-child { text-align: center; font-weight: 600; color: var(--gray); }
             <div class="field-group">
               <label class="field-label">Capacité batterie retenue (kWh)</label>
               <input class="field-input" id="batterySize" type="number" step="5" value="0" oninput="updateBatteryChoice()">
-            </div>
-            <div class="field-group">
-              <label class="field-label">Prix batterie (€ HT/kWh)</label>
-              <input class="field-input" id="batteryPricePerKWh" placeholder="400" type="number" step="10" value="400" oninput="updateBatteryChoice()">
             </div>
             <div class="field-group">
               <label class="field-label">Coût batterie total (€ HT)</label>
@@ -1834,10 +1851,24 @@ function runSim() {
       const rev = revPV + revBat;
       const fin = y <= finYears ? annualFin : 0;
       let net = rev - fin;
-      // Coût d'achat de la batterie physique, déduit une seule fois en année 1 (investissement initial)
-      if (y === 1 && projectTypeR !== 'batterievirtuelle') net -= getBatteryCost();
+      // Coût de la batterie physique :
+      //  - en financement (mode auto) : étalé sur la même durée que les panneaux
+      //  - au comptant, ou si l'utilisateur choisit "comptant" : déduit une fois en année 1
+      let coutBat = 0;
+      if (projectTypeR !== 'batterievirtuelle') {
+        const batTotal = Math.round(getBatteryCost());
+        const batModeEl = document.getElementById('batteryFinanceMode');
+        const batMode = batModeEl ? batModeEl.value : 'auto';
+        const etale = (batMode === 'auto') && (finMode !== 'cash') && finYears > 0;
+        if (etale) {
+          if (y <= finYears) coutBat = Math.round(batTotal / finYears);
+        } else if (y === 1) {
+          coutBat = batTotal;
+        }
+        net -= coutBat;
+      }
       cum += net;
-      simData.push({ y, prod, tarif: Math.round(tarif * 1000) / 1000, rev, fin, net, cum });
+      simData.push({ y, prod, tarif: Math.round(tarif * 1000) / 1000, rev, fin, net, cum, coutBat });
     }
   }
 
@@ -1880,7 +1911,8 @@ function updateKPIs() {
     // 5ème KPI : amortissement (comptant) ou durée financement
     if (finMode === 'cash') {
       const revBrutLisse = d.revMoyenAnnuel || d.gainMoyenAnnuel;
-      const cashHTL = parseFloat(document.getElementById('cashPrice').value) || 0;
+      // Investissement total = matériel PV + batterie physique éventuelle
+      const cashHTL = (parseFloat(document.getElementById('cashPrice').value) || 0) + Math.round(getBatteryCost());
       if (cashHTL > 0 && revBrutLisse > 0) {
         const ansAmort = (cashHTL / revBrutLisse).toFixed(1);
         const rentab = (revBrutLisse / cashHTL * 100).toFixed(1);
@@ -1915,7 +1947,7 @@ function updateKPIs() {
     : (parseFloat(document.getElementById('monthly').value) || 0) * (parseInt(document.getElementById('duration').value) || 0);
   // 5ème KPI : amortissement par cumul des revenus + taux de rentabilité
   if (finMode === 'cash') {
-    const cashHT = parseFloat(document.getElementById('cashPrice').value) || 0;
+    const cashHT = (parseFloat(document.getElementById('cashPrice').value) || 0) + Math.round(getBatteryCost());
     if (cashHT > 0 && simData.length > 0) {
       // Cumul des revenus bruts année par année jusqu'à rembourser l'installation
       let cumulRev = 0;
@@ -1954,7 +1986,7 @@ function renderTable() {
   if (simMode === 'lisse') {
     // Pas de tableau en mode lissé
     thead.innerHTML = '';
-    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--gray);padding:1.5rem;font-style:italic">Mode lissé -- basculez en mode Réel pour le détail année par année.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--gray);padding:1.5rem;font-style:italic">Mode lissé -- basculez en mode Réel pour le détail année par année.</td></tr>';
     return;
   }
 
@@ -1981,7 +2013,7 @@ function renderTable() {
     if (isRevente) {
       // Revente totale : Tarif réseau non pertinent, on affiche tarif revente fixe
       thead.innerHTML = `<tr>
-        <th>An</th><th>Production (kWh)</th><th>Tarif revente (EUR/kWh)</th><th>Revenus revente</th><th>Financement</th><th>Gain net</th><th>Cumulé</th><th>Rentabilité</th>
+        <th>An</th><th>Production (kWh)</th><th>Tarif revente (EUR/kWh)</th><th>Revenus revente</th><th>Financement</th><th>Batterie</th><th>Gain net</th><th>Cumulé</th><th>Rentabilité</th>
       </tr>`;
       tbody.innerHTML = simData.map(d => {
         const cumCls = d.cum < 0 ? 'cum-neg' : 'cum-pos';
@@ -1995,6 +2027,7 @@ function renderTable() {
           <td>${surplusP.toFixed(3)}</td>
           <td>${fmt(d.rev)} EUR</td>
           <td>${d.fin > 0 ? fmt(d.fin) + ' EUR' : '--'}</td>
+          <td style="color:#C0392B">${d.coutBat ? '-' + fmt(d.coutBat) + ' EUR' : '--'}</td>
           <td class="${netCls}">${fmtSign(d.net)} EUR</td>
           <td class="${cumValCls}">${fmtSign(d.cum)} EUR</td>
           <td style="color:var(--gold);font-weight:600">${rentab}</td>
@@ -2003,7 +2036,7 @@ function renderTable() {
     } else {
       // Autoconsommation : afficher tarif réseau + détail autoconso/surplus
       thead.innerHTML = `<tr>
-        <th>An</th><th>Production (kWh)</th><th>Tarif réseau (EUR/kWh)</th><th>Revenus (autoconso + surplus)</th><th>Financement</th><th>Gain net</th><th>Cumulé</th><th>Rentabilité</th>
+        <th>An</th><th>Production (kWh)</th><th>Tarif réseau (EUR/kWh)</th><th>Revenus (autoconso + surplus)</th><th>Financement</th><th>Batterie</th><th>Gain net</th><th>Cumulé</th><th>Rentabilité</th>
       </tr>`;
       tbody.innerHTML = simData.map(d => {
         const cumCls = d.cum < 0 ? 'cum-neg' : 'cum-pos';
@@ -2017,6 +2050,7 @@ function renderTable() {
           <td>${d.tarif.toFixed(3)}</td>
           <td>${fmt(d.rev)} EUR</td>
           <td>${d.fin > 0 ? fmt(d.fin) + ' EUR' : '--'}</td>
+          <td style="color:#C0392B">${d.coutBat ? '-' + fmt(d.coutBat) + ' EUR' : '--'}</td>
           <td class="${netCls}">${fmtSign(d.net)} EUR</td>
           <td class="${cumValCls}">${fmtSign(d.cum)} EUR</td>
           <td style="color:var(--gold);font-weight:600">${rentabA}</td>
@@ -3182,8 +3216,10 @@ function renderBatteryResults(results, noBat, optimalSize) {
 
   results.filter(r => r.size > 0).forEach(r => {
     const gainVsNoBat = r.totalSavings - noBat.totalSavings;
-    const gainKWh = r.totalAutoconso - noBat.totalAutoconso;
-    const batteryCost = r.size * BATTERY_COST_PER_KWH;
+    const gainKWh = r.totalAutoconso - noBat.totalAutoconso;      // autoconso en plus
+    const surplusEnMoins = noBat.totalSurplus - r.totalSurplus;   // surplus non revendu
+    const pxKWhBat = (function(){ const e=document.getElementById('batteryPricePerKWh'); return e ? (parseFloat(e.value)||BATTERY_COST_PER_KWH) : BATTERY_COST_PER_KWH; })();
+    const batteryCost = r.size * pxKWhBat;
     const netGainDuration = Math.round(gainVsNoBat * dureeB - batteryCost);
     const isOptimal = r.size === optimalSize;
     const badge = isOptimal
@@ -3194,7 +3230,8 @@ function renderBatteryResults(results, noBat, optimalSize) {
 
     tbody.innerHTML += `<tr class="${isOptimal ? 'recommended' : ''}">
       <td style="text-align:center;font-weight:700">${r.size} kWh</td>
-      <td>+${gainKWh.toLocaleString('fr-FR')} kWh</td>
+      <td style="color:#C0392B">-${surplusEnMoins.toLocaleString('fr-FR')} kWh</td>
+      <td style="color:var(--green)">+${gainKWh.toLocaleString('fr-FR')} kWh</td>
       <td>${r.autoconsoRate} %</td>
       <td>${batteryCost.toLocaleString('fr-FR')} EUR</td>
       <td style="color:var(--green);font-weight:600">+${Math.round(gainVsNoBat).toLocaleString('fr-FR')} EUR</td>
