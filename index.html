@@ -857,6 +857,14 @@ td:first-child { text-align: center; font-weight: 600; color: var(--gray); }
               <input class="field-input" id="batterySize" type="number" step="5" value="0" oninput="updateBatteryChoice()">
             </div>
             <div class="field-group">
+              <label class="field-label">Prix batterie (€ HT/kWh)</label>
+              <input class="field-input" id="batteryPricePerKWh" placeholder="400" type="number" step="10" value="400" oninput="updateBatteryChoice()">
+            </div>
+            <div class="field-group">
+              <label class="field-label">Coût batterie total (€ HT)</label>
+              <input class="field-input" id="batteryTotalCost" type="text" readonly style="background:#f5f5f5">
+            </div>
+            <div class="field-group">
               <label class="field-label">Gain annuel estimé (€)</label>
               <input class="field-input" id="batteryGainYear" readonly style="background:#F5FAF5;color:var(--green);font-weight:600">
             </div>
@@ -2852,7 +2860,10 @@ function getBatteryCost() {
   const el = document.getElementById('batteryEnabled');
   if (!el || !el.checked) return 0;
   const size = parseFloat(document.getElementById('batterySize').value) || 0;
-  return size * BATTERY_COST_PER_KWH;
+  // Prix au kWh éditable (champ batteryPricePerKWh), sinon constante par défaut
+  const pxEl = document.getElementById('batteryPricePerKWh');
+  const px = pxEl ? (parseFloat(pxEl.value) || BATTERY_COST_PER_KWH) : BATTERY_COST_PER_KWH;
+  return size * px;
 }
 
 function toggleBattery() {
@@ -3146,13 +3157,15 @@ function findOptimalSize(results, noBat, elecPrice) {
   // toujours la plus petite taille à cause des rendements marginaux
   // décroissants -- ici on compare directement le bénéfice net en euros.)
   const studyDuration = parseInt(document.getElementById('studyDuration') ? document.getElementById('studyDuration').value : 30) || 30;
+  const pxEl = document.getElementById('batteryPricePerKWh');
+  const pxKWh = pxEl ? (parseFloat(pxEl.value) || BATTERY_COST_PER_KWH) : BATTERY_COST_PER_KWH;
   let bestSize = 0;
   let bestNetGain = 0; // si aucune taille n'est rentable, ne recommander aucune batterie
 
   for (const r of results) {
     if (r.size === 0) continue;
     const gainVsNoBat = r.totalSavings - noBat.totalSavings;
-    const batteryCost = r.size * BATTERY_COST_PER_KWH;
+    const batteryCost = r.size * pxKWh;
     const netGainDuration = gainVsNoBat * studyDuration - batteryCost;
     if (netGainDuration > bestNetGain) {
       bestNetGain = netGainDuration;
@@ -3234,6 +3247,8 @@ function updateBatteryChoice() {
   const gainAn = size === 0 ? 0 : (closest.totalSavings - refSavings);
   const gainMois = Math.round(gainAn / 12);
   const cost = getBatteryCost();
+  const coutEl = document.getElementById('batteryTotalCost');
+  if (coutEl) coutEl.value = Math.round(cost).toLocaleString('fr-FR') + ' EUR HT';
 
   document.getElementById('batteryGainYear').value = (gainAn >= 0 ? '+' : '') + Math.round(gainAn).toLocaleString('fr-FR') + ' EUR/an' + (cost > 0 ? ' (coût batterie : ' + cost.toLocaleString('fr-FR') + ' EUR)' : '');
   document.getElementById('batteryGainMonth').value = (gainMois >= 0 ? '+' : '') + gainMois + ' EUR/mois';
